@@ -1,9 +1,15 @@
 package com.zerospin.app.ui
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -32,9 +38,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zerospin.app.R
 import com.zerospin.app.data.ChatMessage
 import com.zerospin.app.data.Post
 import com.zerospin.app.data.SampleChats
@@ -45,6 +54,7 @@ import com.zerospin.app.ui.screens.FeedScreen
 import com.zerospin.app.ui.screens.GalleryScreen
 import com.zerospin.app.ui.screens.ProfileScreen
 import com.zerospin.app.ui.screens.SettingsDialog
+import com.zerospin.app.ui.theme.AuroraBrush
 import com.zerospin.app.ui.theme.Bg
 import com.zerospin.app.ui.theme.Cyan
 import com.zerospin.app.ui.theme.Muted
@@ -78,21 +88,24 @@ fun ZeroSpinApp() {
             )
         },
         bottomBar = {
-            NavigationBar(containerColor = Bg) {
-                tabs.forEachIndexed { index, item ->
-                    NavigationBarItem(
-                        selected = tab == index,
-                        onClick = { tab = index },
-                        icon = { Icon(item.icon, contentDescription = item.title) },
-                        label = { Text(item.title, fontSize = 10.sp) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Cyan,
-                            selectedTextColor = Cyan,
-                            unselectedIconColor = Muted,
-                            unselectedTextColor = Muted,
-                            indicatorColor = Color.Transparent,
-                        ),
-                    )
+            Column {
+                Box(Modifier.fillMaxWidth().height(2.dp).background(AuroraBrush))
+                NavigationBar(containerColor = Bg) {
+                    tabs.forEachIndexed { index, item ->
+                        NavigationBarItem(
+                            selected = tab == index,
+                            onClick = { tab = index },
+                            icon = { Icon(item.icon, contentDescription = item.title) },
+                            label = { Text(item.title, fontSize = 10.sp, letterSpacing = 0.5.sp) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Cyan,
+                                selectedTextColor = Cyan,
+                                unselectedIconColor = Muted,
+                                unselectedTextColor = Muted,
+                                indicatorColor = Cyan.copy(alpha = 0.14f),
+                            ),
+                        )
+                    }
                 }
             }
         },
@@ -117,22 +130,32 @@ fun ZeroSpinApp() {
 
 @Composable
 private fun AppTopBar(title: String, onSettings: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = title,
-            color = Cyan,
-            fontWeight = FontWeight.Bold,
-            fontSize = 18.sp,
-            modifier = Modifier.weight(1f),
-        )
-        IconButton(onClick = onSettings) {
-            Icon(Icons.Default.Settings, contentDescription = "Настройки", tint = Muted)
+    Column(Modifier.fillMaxWidth().statusBarsPadding().background(Bg)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.logo_av),
+                contentDescription = "AV",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(width = 38.dp, height = 27.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = title,
+                color = Cyan,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                letterSpacing = 1.sp,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = onSettings) {
+                Icon(Icons.Default.Settings, contentDescription = "Настройки", tint = Muted)
+            }
         }
+        Box(Modifier.fillMaxWidth().height(2.dp).background(AuroraBrush))
     }
 }

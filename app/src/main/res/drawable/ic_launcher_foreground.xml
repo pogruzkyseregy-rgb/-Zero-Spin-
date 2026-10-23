@@ -1,13 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Простой символ: неоновый треугольник (замените на логотип AV позже) -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#3FE0F0"
-        android:strokeWidth="4"
-        android:pathData="M54,28 L80,76 L28,76 Z" />
-</vector>
+<!-- Иконка приложения: логотип AV по центру -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:left="22%"
+        android:right="22%"
+        android:top="28%"
+        android:bottom="28%"
+        android:drawable="@drawable/logo_av" />
+</layer-list>
