@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Zero Spin</string>
+    <string name="widget_name">Монетка Авроры</string>
+    <string name="widget_desc">Нажми на монету, чтобы подбросить</string>
+    <string name="side_a">AvrorA</string>
+    <string name="side_b">Zero Spin</string>
 </resources>

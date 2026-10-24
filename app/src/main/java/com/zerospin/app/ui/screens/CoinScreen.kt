@@ -15,23 +15,26 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zerospin.app.data.CoinStore
 import com.zerospin.app.ui.hud.HudButton
 import com.zerospin.app.ui.hud.TargetRing
 import com.zerospin.app.ui.hud.hudPanel
@@ -39,18 +42,17 @@ import com.zerospin.app.ui.theme.Cyan
 import com.zerospin.app.ui.theme.Muted
 import com.zerospin.app.ui.theme.TextMain
 import com.zerospin.app.ui.theme.Violet
+import com.zerospin.app.widget.CoinWidget
 import kotlin.math.abs
-import kotlin.random.Random
+import kotlin.math.roundToInt
 
-private const val SIDE_AVRORA = 0
-private const val SIDE_ZERO = 1
-private const val HISTORY_LIMIT = 20
-
-/** Монетка Zero Spin: подброс, счётчики и история. Данные живут, пока открыто приложение. */
+/** Монетка Zero Spin. Счёт и история общие с виджетом на рабочем столе. */
 @Composable
 fun CoinScreen() {
-    var side by rememberSaveable { mutableIntStateOf(SIDE_AVRORA) }
-    var history by rememberSaveable { mutableStateOf("") }
+    val context = LocalContext.current
+
+    // Меняется после каждого броска или сброса, чтобы перечитать счёт из хранилища
+    var revision by rememberSaveable { mutableIntStateOf(0) }
     var rotTarget by remember { mutableFloatStateOf(0f) }
 
     val rotation by animateFloatAsState(
@@ -60,20 +62,31 @@ fun CoinScreen() {
     )
     val spinning = abs(rotation - rotTarget) > 0.5f
 
+    val side = remember(revision) { CoinStore.last(context) }
+    val countA = remember(revision) { CoinStore.countA(context) }
+    val countB = remember(revision) { CoinStore.countB(context) }
+    val history = remember(revision) { CoinStore.history(context) }
+    val total = countA + countB
+
     fun toss() {
         if (spinning) return
-        val result = Random.nextInt(2)
-        // Половины оборота: 10 или 12 плюс один, если сторона должна смениться
-        var halfTurns = 10 + 2 * Random.nextInt(2)
-        if (result != side) halfTurns += 1
+        val from = CoinStore.last(context)
+        val result = CoinStore.toss()
+        // Полуобороты: 10 или 12, плюс один, если сторона должна смениться
+        var halfTurns = 10 + 2 * kotlin.random.Random.nextInt(2)
+        if (result != from) halfTurns += 1
         rotTarget += halfTurns * 180f
-        side = result
-        history = (history + if (result == SIDE_AVRORA) "a" else "b").takeLast(HISTORY_LIMIT)
+        CoinStore.record(context, result)
+        CoinWidget.refreshAll(context)
+        revision++
     }
 
-    val countA = history.count { it == 'a' }
-    val countB = history.count { it == 'b' }
-    val total = countA + countB
+    fun reset() {
+        if (spinning) return
+        CoinStore.reset(context)
+        CoinWidget.refreshAll(context)
+        revision++
+    }
 
     Column(
         Modifier
@@ -96,10 +109,10 @@ fun CoinScreen() {
                 Text(
                     text = when {
                         spinning -> "…"
-                        side == SIDE_AVRORA -> "AVRORA"
+                        side == CoinStore.SIDE_A -> "AVRORA"
                         else -> "ZERO\nSPIN"
                     },
-                    color = if (side == SIDE_AVRORA) Cyan else Violet,
+                    color = if (side == CoinStore.SIDE_A) Cyan else Violet,
                     fontWeight = FontWeight.Bold,
                     fontSize = 22.sp,
                     letterSpacing = 2.sp,
@@ -110,7 +123,11 @@ fun CoinScreen() {
 
         Spacer(Modifier.height(20.dp))
         Text(
-            text = if (history.isEmpty()) "Нажмите монетку или кнопку ниже" else "Последний бросок: ${if (side == SIDE_AVRORA) "AvrorA" else "Zero Spin"}",
+            text = if (CoinStore.hasFlipped(context)) {
+                "Последний бросок: ${if (side == CoinStore.SIDE_A) "AvrorA" else "Zero Spin"}"
+            } else {
+                "Нажмите монетку или кнопку ниже"
+            },
             color = TextMain,
             fontSize = 13.sp,
         )
@@ -125,41 +142,40 @@ fun CoinScreen() {
         }
 
         Spacer(Modifier.height(14.dp))
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             history.forEach { c ->
                 Box(
                     Modifier
                         .size(10.dp)
-                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .clip(CircleShape)
                         .background(if (c == 'a') Cyan else Violet),
                 )
             }
         }
         Spacer(Modifier.height(8.dp))
         Text(
-            "Счётчики за текущий сеанс, до $HISTORY_LIMIT последних бросков",
+            "Последние ${CoinStore.HISTORY_SIZE} бросков · счёт общий с виджетом",
             color = Muted,
             fontSize = 10.sp,
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "СБРОСИТЬ СЧЁТ",
+            color = Muted,
+            fontSize = 11.sp,
+            letterSpacing = 1.sp,
+            modifier = Modifier.clickable { reset() }.padding(8.dp),
         )
     }
 }
 
 @Composable
-private fun CountCell(
-    label: String,
-    count: Int,
-    total: Int,
-    color: androidx.compose.ui.graphics.Color,
-    modifier: Modifier,
-) {
+private fun CountCell(label: String, count: Int, total: Int, color: Color, modifier: Modifier) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(label, color = color, fontSize = 10.sp, letterSpacing = 1.5.sp)
         Text(count.toString(), color = color, fontWeight = FontWeight.Bold, fontSize = 22.sp)
         Text(
-            if (total == 0) "—" else "${Math.round(count * 100f / total)}%",
+            if (total == 0) "—" else "${(count * 100f / total).roundToInt()}%",
             color = Muted,
             fontSize = 11.sp,
         )
