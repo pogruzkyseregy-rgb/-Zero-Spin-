@@ -47,6 +47,7 @@ fun SettingsScreen(
     version: String,
     onChange: (AppSettings) -> Unit,
     onOpenProfile: () -> Unit,
+    onOpenBuilder: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -87,6 +88,22 @@ fun SettingsScreen(
                         Text("@${profile.nick} · ${profile.status.ifBlank { "без статуса" }}", color = Muted, fontSize = 12.sp)
                     }
                     Text("ИЗМЕНИТЬ", color = Violet, fontSize = 10.sp, letterSpacing = 1.sp)
+                }
+
+                HudSection("Профиль") {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpenBuilder() }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Конструктор профиля", color = TextMain, fontSize = 14.sp)
+                            Text("Шаблоны, блоки и их порядок", color = Muted, fontSize = 11.sp)
+                        }
+                        Text("ОТКРЫТЬ", color = Violet, fontSize = 10.sp, letterSpacing = 1.sp)
+                    }
                 }
 
                 HudSection("Уведомления") {

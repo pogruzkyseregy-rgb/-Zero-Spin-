@@ -44,6 +44,7 @@ import com.zerospin.app.ui.screens.EventsScreen
 import com.zerospin.app.ui.screens.FeedScreen
 import com.zerospin.app.ui.screens.NotesScreen
 import com.zerospin.app.ui.screens.PollsScreen
+import com.zerospin.app.ui.screens.ProfileBuilderScreen
 import com.zerospin.app.ui.screens.ProfileScreen
 import com.zerospin.app.ui.screens.SECTION_COIN
 import com.zerospin.app.ui.screens.SECTION_EVENTS
@@ -77,6 +78,7 @@ fun ZeroSpinApp() {
     var section by rememberSaveable { mutableStateOf(NO_SECTION) }
     var openChat by rememberSaveable { mutableIntStateOf(NO_CHAT) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    var showBuilder by rememberSaveable { mutableStateOf(false) }
 
     val myName = store.profile.value.name
     val settings = store.settings.value
@@ -306,12 +308,21 @@ fun ZeroSpinApp() {
                         chatCount = store.chats.count { it.id != SUPPORT_CHAT_ID },
                         onSave = { store.profile.value = it },
                         onAvatar = { uri -> store.profile.value = store.profile.value.copy(avatarUri = uri) },
+                        onOpenBuilder = { showBuilder = true },
                     )
                 }
             }
         }
     }
 
+    }
+
+    if (showBuilder) {
+        ProfileBuilderScreen(
+            blocks = store.profile.value.blocks,
+            onChange = { store.profile.value = store.profile.value.copy(blocks = it) },
+            onDismiss = { showBuilder = false },
+        )
     }
 
     if (showSettings) {
@@ -323,6 +334,10 @@ fun ZeroSpinApp() {
             onOpenProfile = {
                 showSettings = false
                 selectTab(3)
+            },
+            onOpenBuilder = {
+                showSettings = false
+                showBuilder = true
             },
             onDismiss = { showSettings = false },
         )

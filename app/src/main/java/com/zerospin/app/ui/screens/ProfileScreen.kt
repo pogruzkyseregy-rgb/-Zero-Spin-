@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,11 +28,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zerospin.app.data.BlockKind
 import com.zerospin.app.data.Profile
+import com.zerospin.app.data.ProfileBlock
 import com.zerospin.app.ui.components.rememberCoverPicker
 import com.zerospin.app.ui.components.rememberThumb
 import com.zerospin.app.ui.hud.HudButton
@@ -43,6 +47,7 @@ import com.zerospin.app.ui.theme.Cyan
 import com.zerospin.app.ui.theme.Muted
 import com.zerospin.app.ui.theme.Red
 import com.zerospin.app.ui.theme.TextMain
+import com.zerospin.app.ui.theme.Violet
 
 private val BirthdayRegex = Regex("""^\d{4}-\d{2}-\d{2}$""")
 private val NickRegex = Regex("""^[\p{L}\p{N}_.]{3,20}$""")
@@ -55,6 +60,7 @@ fun ProfileScreen(
     chatCount: Int,
     onSave: (Profile) -> Unit,
     onAvatar: (String?) -> Unit,
+    onOpenBuilder: () -> Unit,
 ) {
     var editing by rememberSaveable { mutableStateOf(false) }
 
@@ -130,28 +136,23 @@ fun ProfileScreen(
                 Spacer(Modifier.height(4.dp))
                 Text(profile.status, color = Cyan.copy(alpha = 0.8f), fontSize = 13.sp)
             }
+            Spacer(Modifier.height(20.dp))
+
+            // Блоки в порядке, который задан в конструкторе
+            profile.blocks.forEach { block ->
+                BlockView(block, profile, postCount, chatCount)
+                Spacer(Modifier.height(12.dp))
+            }
+            if (profile.blocks.isEmpty()) {
+                Text("Профиль пуст. Добавьте блоки в конструкторе", color = Muted, fontSize = 12.sp)
+                Spacer(Modifier.height(12.dp))
+            }
             Spacer(Modifier.height(8.dp))
-            Text(
-                text = profile.bio.ifBlank { "Пока без описания" },
-                color = TextMain.copy(alpha = 0.7f),
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.height(24.dp))
 
-            StatBlock(label = "ЗАПИСЕЙ", value = postCount, goal = 10)
-            Spacer(Modifier.height(12.dp))
-            StatBlock(label = "КАНАЛОВ", value = chatCount, goal = 5)
-            Spacer(Modifier.height(12.dp))
-            InfoRow("ДАТА РОЖДЕНИЯ", profile.birthday.ifBlank { "не указана" })
-            Spacer(Modifier.height(24.dp))
-
-            HudButton(
-                text = "Редактировать профиль",
-                onClick = { startEdit() },
-                modifier = Modifier.fillMaxWidth(),
-                primary = true,
-            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HudButton(text = "Изменить", onClick = { startEdit() }, modifier = Modifier.weight(1f), primary = true)
+                HudButton(text = "Конструктор", onClick = onOpenBuilder, modifier = Modifier.weight(1f))
+            }
         } else {
             Column(Modifier.fillMaxWidth().hudPanel(cut = 12.dp).padding(14.dp)) {
                 HudTextField(
@@ -239,6 +240,52 @@ fun ProfileScreen(
                 }
             }
         }
+    }
+}
+
+/** Один блок профиля. Пустые блоки с текстом не показываются, чтобы не было пустых рамок. */
+@Composable
+private fun BlockView(block: ProfileBlock, profile: Profile, postCount: Int, chatCount: Int) {
+    when (block.kind) {
+        BlockKind.ABOUT -> TextPanel(
+            BlockKind.ABOUT.title,
+            profile.bio.ifBlank { "Пока без описания" },
+        )
+        BlockKind.STATS -> Column(Modifier.fillMaxWidth()) {
+            StatBlock(label = "ЗАПИСЕЙ", value = postCount, goal = 10)
+            Spacer(Modifier.height(12.dp))
+            StatBlock(label = "КАНАЛОВ", value = chatCount, goal = 5)
+        }
+        BlockKind.BIRTHDAY -> InfoRow(BlockKind.BIRTHDAY.title, profile.birthday.ifBlank { "не указана" })
+        BlockKind.QUOTE -> if (block.text.isNotBlank()) QuotePanel(block.text)
+        BlockKind.LOCATION -> if (block.text.isNotBlank()) InfoRow(BlockKind.LOCATION.title, block.text)
+        BlockKind.LINK -> if (block.text.isNotBlank()) InfoRow(BlockKind.LINK.title, block.text)
+    }
+}
+
+@Composable
+private fun TextPanel(label: String, text: String) {
+    Column(Modifier.fillMaxWidth().hudPanel(cut = 12.dp).padding(14.dp)) {
+        Text(label, color = Muted, fontSize = 10.sp, letterSpacing = 1.5.sp)
+        Spacer(Modifier.height(6.dp))
+        Text(text, color = TextMain.copy(alpha = 0.85f), fontSize = 14.sp)
+    }
+}
+
+@Composable
+private fun QuotePanel(text: String) {
+    Column(
+        Modifier.fillMaxWidth().hudPanel(line = Violet, cut = 12.dp).padding(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("“", color = Violet, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+        Text(
+            text,
+            color = Cyan,
+            fontStyle = FontStyle.Italic,
+            fontSize = 15.sp,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 

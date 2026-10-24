@@ -92,6 +92,44 @@ data class Poll(
     val attachments: List<Attachment> = emptyList(),
 )
 
+/** Виды блоков профиля. Текст берётся из полей профиля или из самого блока. */
+enum class BlockKind(val title: String, val hint: String, val hasText: Boolean) {
+    ABOUT("О СЕБЕ", "Текст из поля «О себе»", false),
+    STATS("СТАТИСТИКА", "Записи и каналы с прогресс-полосами", false),
+    BIRTHDAY("ДАТА РОЖДЕНИЯ", "Из поля «Дата рождения»", false),
+    QUOTE("ЦИТАТА", "Ваша фраза или девиз", true),
+    LOCATION("ГОРОД", "Где вы сейчас или откуда", true),
+    LINK("ССЫЛКА", "Канал, сайт или контакт", true),
+}
+
+/** Блок профиля: вид и свой текст (только для видов с hasText). */
+data class ProfileBlock(
+    val kind: BlockKind,
+    val text: String = "",
+)
+
+/** Готовые наборы блоков: одно нажатие — и профиль перестроен. */
+val BlockTemplates: List<Pair<String, List<ProfileBlock>>> = listOf(
+    "Минимал" to listOf(
+        ProfileBlock(BlockKind.ABOUT),
+        ProfileBlock(BlockKind.BIRTHDAY),
+    ),
+    "Аврора" to listOf(
+        ProfileBlock(BlockKind.QUOTE, "Тишина тоже сигнал"),
+        ProfileBlock(BlockKind.STATS),
+        ProfileBlock(BlockKind.ABOUT),
+        ProfileBlock(BlockKind.BIRTHDAY),
+    ),
+    "Полный" to listOf(
+        ProfileBlock(BlockKind.QUOTE, "Тишина тоже сигнал"),
+        ProfileBlock(BlockKind.ABOUT),
+        ProfileBlock(BlockKind.STATS),
+        ProfileBlock(BlockKind.BIRTHDAY),
+        ProfileBlock(BlockKind.LOCATION),
+        ProfileBlock(BlockKind.LINK),
+    ),
+)
+
 /** birthday — yyyy-MM-dd или пусто */
 data class Profile(
     val name: String,
@@ -101,6 +139,8 @@ data class Profile(
     val birthday: String,
     /** Фото профиля (content:// uri) или null */
     val avatarUri: String? = null,
+    /** Блоки профиля в порядке показа сверху вниз */
+    val blocks: List<ProfileBlock> = BlockTemplates[1].second,
 )
 
 data class AppSettings(

@@ -49,7 +49,10 @@ class AppStore(context: Context) {
         val root = JSONObject()
         root.put("profile", JSONObject()
             .put("name", p.name).put("nick", p.nick).put("status", p.status)
-            .put("bio", p.bio).put("birthday", p.birthday).put("avatar", p.avatarUri ?: ""))
+            .put("bio", p.bio).put("birthday", p.birthday).put("avatar", p.avatarUri ?: "")
+            .put("blocks", JSONArray().apply {
+                p.blocks.forEach { put(JSONObject().put("k", it.kind.name).put("t", it.text)) }
+            }))
         root.put("settings", JSONObject()
             .put("notifications", s.notifications).put("sounds", s.sounds).put("vibration", s.vibration)
             .put("showOnline", s.showOnline).put("readReceipts", s.readReceipts)
@@ -124,6 +127,10 @@ class AppStore(context: Context) {
                 bio = o.optString("bio", ""),
                 birthday = o.optString("birthday", ""),
                 avatarUri = o.optString("avatar", "").ifBlank { null },
+                blocks = o.optJSONArray("blocks")?.objects()?.mapNotNull { b ->
+                    runCatching { BlockKind.valueOf(b.getString("k")) }.getOrNull()
+                        ?.let { ProfileBlock(it, b.optString("t")) }
+                } ?: BlockTemplates[1].second,
             )
         }
         root.optJSONObject("settings")?.let { o ->
