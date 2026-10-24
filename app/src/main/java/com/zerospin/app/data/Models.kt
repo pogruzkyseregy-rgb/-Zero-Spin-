@@ -7,6 +7,19 @@ import java.util.Locale
 /** Идентификатор встроенного канала поддержки «Аврора». */
 const val SUPPORT_CHAT_ID = 0
 
+/** Чат «Избранное»: сюда пересылаются сохранённые сообщения. */
+const val SAVED_CHAT_ID = 999_999
+
+/** Варианты таймера исчезающих сообщений: секунды и подпись. 0 — выключено. */
+val TtlOptions = listOf(
+    0 to "Выключено",
+    3600 to "1 час",
+    86_400 to "1 день",
+    604_800 to "1 неделя",
+)
+
+fun ttlLabel(seconds: Int): String = TtlOptions.firstOrNull { it.first == seconds }?.second ?: "${seconds / 3600} ч"
+
 /** Реакции, которые можно поставить на сообщение. */
 val QuickReactions = listOf("❤️", "🔥", "😂", "👍", "😮", "😢")
 
@@ -32,13 +45,46 @@ data class Post(
     val reposted: Boolean = false,
     /** id исходной записи, если это репост */
     val repostOf: Int? = null,
+    val comments: List<Comment> = emptyList(),
+    /** Сохранена в закладки */
+    val bookmarked: Boolean = false,
 )
+
+data class Comment(
+    val id: Int,
+    val author: String,
+    val text: String,
+    val time: String,
+)
+
+/** История («момент»): фото с подписью, живёт сутки. */
+data class Story(
+    val id: Int,
+    val author: String,
+    val uri: String,
+    val caption: String,
+    val createdAt: Long,
+    val seen: Boolean = false,
+)
+
+/** Сколько живёт история. */
+const val STORY_LIFETIME_MS = 24L * 60 * 60 * 1000
 
 data class Chat(
     val id: Int,
     val name: String,
     val pinned: Boolean = false,
     val muted: Boolean = false,
+    /** Закреплённое сообщение внутри чата */
+    val pinnedMessageId: Int? = null,
+    /** Недописанный текст, сохраняется при выходе из чата */
+    val draft: String = "",
+    /** Непрочитанные входящие */
+    val unread: Int = 0,
+    /** Убран в архив: не мешает в общем списке */
+    val archived: Boolean = false,
+    /** Исчезающие сообщения: через сколько секунд удаляются, 0 — выключено */
+    val ttlSeconds: Int = 0,
 )
 
 data class ChatMessage(
@@ -56,6 +102,8 @@ data class ChatMessage(
     /** Прочитано собеседником (для галочек у моих сообщений) */
     val read: Boolean = false,
     val createdAt: Long = nowMillis(),
+    /** Если сообщение переслано — от кого */
+    val forwardedFrom: String? = null,
 )
 
 data class Note(
@@ -163,6 +211,10 @@ data class AppSettings(
     val readReceipts: Boolean = true,
     val openToAll: Boolean = true,
     val glitch: Boolean = true,
+    /** Анимация квантового поля на фоне */
+    val animatedBackground: Boolean = true,
+    /** Хэш PIN-кода на вход, пусто — без блокировки */
+    val pinHash: String = "",
 )
 
 fun nowTime(): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())

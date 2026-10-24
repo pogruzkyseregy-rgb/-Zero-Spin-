@@ -10,7 +10,7 @@ import org.json.JSONObject
 /**
  * Всё состояние приложения в одном месте.
  * Изменения сразу видны интерфейсу, а ZeroSpinApp сохраняет их в SharedPreferences.
- * Новые поля читаются с значениями по умолчанию, поэтому старые данные не ломаются.
+ * Новые поля читаются со значениями по умолчанию, поэтому старые данные не ломаются.
  */
 class AppStore(context: Context) {
 
@@ -19,6 +19,7 @@ class AppStore(context: Context) {
     val profile = mutableStateOf(Profile("Адонис", "adonis", "В сети", "", ""))
     val settings = mutableStateOf(AppSettings())
     val posts = mutableStateListOf<Post>()
+    val stories = mutableStateListOf<Story>()
     val chats = mutableStateListOf<Chat>()
     val messages = mutableStateMapOf<Int, List<ChatMessage>>()
     val notes = mutableStateListOf<Note>()
@@ -28,6 +29,10 @@ class AppStore(context: Context) {
     init {
         prefs.getString("all", null)?.let { load(it) }
         if (chats.none { it.id == SUPPORT_CHAT_ID }) addSupportChat()
+        if (chats.none { it.id == SAVED_CHAT_ID }) {
+            chats.add(1.coerceAtMost(chats.size), Chat(SAVED_CHAT_ID, "Избранное", pinned = true))
+            messages[SAVED_CHAT_ID] = emptyList()
+        }
     }
 
     private fun addSupportChat() {
@@ -36,7 +41,7 @@ class AppStore(context: Context) {
             ChatMessage(
                 id = 1,
                 fromMe = false,
-                text = "Привет, я Аврора. Спросите, как пользоваться Zero Spin: профиль, чаты, заметки, события, опросы.",
+                text = "Привет, я Аврора. Спросите, как пользоваться Zero Spin: профиль, чаты, истории, заметки, опросы.",
                 time = nowTime(),
             ),
         )
@@ -59,20 +64,36 @@ class AppStore(context: Context) {
         root.put("settings", JSONObject()
             .put("notifications", s.notifications).put("sounds", s.sounds).put("vibration", s.vibration)
             .put("showOnline", s.showOnline).put("readReceipts", s.readReceipts)
-            .put("openToAll", s.openToAll).put("glitch", s.glitch))
+            .put("openToAll", s.openToAll).put("glitch", s.glitch)
+            .put("animatedBackground", s.animatedBackground).put("pinHash", s.pinHash))
         root.put("posts", JSONArray().apply {
             posts.forEach { post ->
                 put(JSONObject().put("id", post.id).put("author", post.author).put("time", post.time)
                     .put("text", post.text).put("attachments", attachmentsToJson(post.attachments))
                     .put("likes", post.likes).put("liked", post.liked)
                     .put("reposts", post.reposts).put("reposted", post.reposted)
-                    .put("repostOf", post.repostOf ?: JSONObject.NULL))
+                    .put("repostOf", post.repostOf ?: JSONObject.NULL)
+                    .put("bookmarked", post.bookmarked)
+                    .put("comments", JSONArray().apply {
+                        post.comments.forEach { c ->
+                            put(JSONObject().put("id", c.id).put("author", c.author).put("text", c.text).put("time", c.time))
+                        }
+                    }))
+            }
+        })
+        root.put("stories", JSONArray().apply {
+            stories.forEach { st ->
+                put(JSONObject().put("id", st.id).put("author", st.author).put("uri", st.uri)
+                    .put("caption", st.caption).put("createdAt", st.createdAt).put("seen", st.seen))
             }
         })
         root.put("chats", JSONArray().apply {
             chats.forEach {
                 put(JSONObject().put("id", it.id).put("name", it.name)
-                    .put("pinned", it.pinned).put("muted", it.muted))
+                    .put("pinned", it.pinned).put("muted", it.muted)
+                    .put("pinnedMessageId", it.pinnedMessageId ?: JSONObject.NULL)
+                    .put("draft", it.draft).put("unread", it.unread)
+                    .put("archived", it.archived).put("ttl", it.ttlSeconds))
             }
         })
         root.put("messages", JSONObject().apply {
@@ -86,7 +107,8 @@ class AppStore(context: Context) {
                             .put("myReaction", m.myReaction ?: JSONObject.NULL)
                             .put("reactionCount", m.reactionCount)
                             .put("edited", m.edited).put("read", m.read)
-                            .put("createdAt", m.createdAt))
+                            .put("createdAt", m.createdAt)
+                            .put("forwardedFrom", m.forwardedFrom ?: JSONObject.NULL))
                     }
                 })
             }
@@ -149,6 +171,8 @@ class AppStore(context: Context) {
                 readReceipts = o.optBoolean("readReceipts", d.readReceipts),
                 openToAll = o.optBoolean("openToAll", d.openToAll),
                 glitch = o.optBoolean("glitch", d.glitch),
+                animatedBackground = o.optBoolean("animatedBackground", d.animatedBackground),
+                pinHash = o.optString("pinHash", d.pinHash),
             )
         }
         root.optJSONArray("posts")?.objects()?.forEach { o ->
@@ -158,10 +182,30 @@ class AppStore(context: Context) {
                 likes = o.optInt("likes"), liked = o.optBoolean("liked"),
                 reposts = o.optInt("reposts"), reposted = o.optBoolean("reposted"),
                 repostOf = if (o.isNull("repostOf")) null else o.getInt("repostOf"),
+                comments = o.optJSONArray("comments")?.objects()?.map { c ->
+                    Comment(c.getInt("id"), c.getString("author"), c.getString("text"), c.optString("time"))
+                } ?: emptyList(),
+                bookmarked = o.optBoolean("bookmarked"),
+            ))
+        }
+        root.optJSONArray("stories")?.objects()?.forEach { o ->
+            stories.add(Story(
+                id = o.getInt("id"), author = o.getString("author"), uri = o.getString("uri"),
+                caption = o.optString("caption"), createdAt = o.getLong("createdAt"), seen = o.optBoolean("seen"),
             ))
         }
         root.optJSONArray("chats")?.objects()?.forEach { o ->
-            chats.add(Chat(o.getInt("id"), o.getString("name"), o.optBoolean("pinned"), o.optBoolean("muted")))
+            chats.add(Chat(
+                id = o.getInt("id"),
+                name = o.getString("name"),
+                pinned = o.optBoolean("pinned"),
+                muted = o.optBoolean("muted"),
+                pinnedMessageId = if (o.isNull("pinnedMessageId")) null else o.optInt("pinnedMessageId"),
+                draft = o.optString("draft"),
+                unread = o.optInt("unread"),
+                archived = o.optBoolean("archived"),
+                ttlSeconds = o.optInt("ttl"),
+            ))
         }
         root.optJSONObject("messages")?.let { obj ->
             obj.keys().forEach { key ->
@@ -178,6 +222,7 @@ class AppStore(context: Context) {
                         edited = o.optBoolean("edited"),
                         read = o.optBoolean("read"),
                         createdAt = o.optLong("createdAt", nowMillis()),
+                        forwardedFrom = if (o.isNull("forwardedFrom")) null else o.optString("forwardedFrom"),
                     )
                 }
                 messages[key.toInt()] = list
