@@ -15,11 +15,18 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -176,14 +183,16 @@ private fun PostCard(
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ActionChip(
-                    label = if (post.liked) "♥ ${post.likes}" else "♡ ${post.likes}",
+                    label = "${post.likes}",
+                    icon = if (post.liked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                     active = post.liked,
                     onClick = onLike,
                 )
-                Spacer(Modifier.width(14.dp))
+                Spacer(Modifier.width(18.dp))
                 if (!isRepost) {
                     ActionChip(
-                        label = "⟲ ${post.reposts}",
+                        label = "${post.reposts}",
+                        icon = Icons.Filled.Repeat,
                         active = post.reposted,
                         onClick = onRepost,
                     )
@@ -212,14 +221,21 @@ private fun OriginalCard(original: Post?) {
     }
 }
 
+/** Кнопка под записью: иконка и число. Активная окрашивается в циан. */
 @Composable
-private fun ActionChip(label: String, active: Boolean, onClick: () -> Unit) {
-    Text(
-        label,
-        color = if (active) Cyan else Muted,
-        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-        fontSize = 12.sp,
-        letterSpacing = 0.5.sp,
-        modifier = Modifier.clickable(onClick = onClick).padding(vertical = 6.dp, horizontal = 4.dp),
-    )
+private fun ActionChip(label: String, icon: ImageVector, active: Boolean, onClick: () -> Unit) {
+    val tint = if (active) Cyan else Muted
+    Row(
+        Modifier.clickable(onClick = onClick).padding(vertical = 6.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(
+            label,
+            color = tint,
+            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+            fontSize = 12.sp,
+        )
+    }
 }
