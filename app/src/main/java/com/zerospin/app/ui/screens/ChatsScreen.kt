@@ -48,7 +48,8 @@ import com.zerospin.app.data.ChatMessage
 import com.zerospin.app.data.QuickReactions
 import com.zerospin.app.data.SUPPORT_CHAT_ID
 import com.zerospin.app.ui.components.AttachmentList
-import com.zerospin.app.ui.components.rememberAttachPicker
+import com.zerospin.app.ui.components.rememberFilePicker
+import com.zerospin.app.ui.components.rememberPhotoPicker
 import com.zerospin.app.ui.hud.HudAction
 import com.zerospin.app.ui.hud.HudActionSheet
 import com.zerospin.app.ui.hud.HudButton
@@ -274,7 +275,9 @@ private fun Conversation(
     var editing by remember(chat.id) { mutableStateOf<ChatMessage?>(null) }
     var actionFor by remember(chat.id) { mutableStateOf<ChatMessage?>(null) }
     var reactionFor by remember(chat.id) { mutableStateOf<ChatMessage?>(null) }
-    val pick = rememberAttachPicker { pending = pending + it }
+    var showAttach by remember(chat.id) { mutableStateOf(false) }
+    val pickPhoto = rememberPhotoPicker { pending = pending + it }
+    val pickFile = rememberFilePicker { pending = pending + it }
     val listState = rememberLazyListState()
 
     val rows = remember(messages) { buildRows(messages) }
@@ -378,7 +381,7 @@ private fun Conversation(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                Modifier.size(46.dp).hudPanel(cut = 10.dp).clickable(onClick = pick),
+                Modifier.size(46.dp).hudPanel(cut = 10.dp).clickable { showAttach = true },
                 contentAlignment = Alignment.Center,
             ) {
                 HudIcon(HudIconKind.PLUS, Cyan, Modifier.size(18.dp))
@@ -448,6 +451,18 @@ private fun Conversation(
             }
         }
         HudActionSheet(title = "Сообщение", actions = actions, onDismiss = { actionFor = null })
+    }
+
+    // Вложения: фото и файлы выбираются отдельно
+    if (showAttach) {
+        HudActionSheet(
+            title = "Вложить",
+            actions = listOf(
+                HudAction("Фото и видео") { pickPhoto() },
+                HudAction("Файл") { pickFile() },
+            ),
+            onDismiss = { showAttach = false },
+        )
     }
 
     reactionFor?.let { m ->

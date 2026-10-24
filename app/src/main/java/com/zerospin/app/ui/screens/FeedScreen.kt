@@ -7,10 +7,10 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,7 +33,8 @@ import androidx.compose.ui.unit.sp
 import com.zerospin.app.data.Attachment
 import com.zerospin.app.data.Post
 import com.zerospin.app.ui.components.AttachmentList
-import com.zerospin.app.ui.components.rememberAttachPicker
+import com.zerospin.app.ui.components.rememberFilePicker
+import com.zerospin.app.ui.components.rememberPhotoPicker
 import com.zerospin.app.ui.hud.HudAction
 import com.zerospin.app.ui.hud.HudActionSheet
 import com.zerospin.app.ui.hud.HudButton
@@ -42,6 +43,7 @@ import com.zerospin.app.ui.hud.HudTextField
 import com.zerospin.app.ui.hud.hudPanel
 import com.zerospin.app.ui.theme.Cyan
 import com.zerospin.app.ui.theme.Muted
+import com.zerospin.app.ui.theme.Red
 import com.zerospin.app.ui.theme.TextMain
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -51,12 +53,14 @@ fun FeedScreen(
     currentAuthor: String,
     onPublish: (String, List<Attachment>) -> Unit,
     onLike: (Int) -> Unit,
+    onRepost: (Int) -> Unit,
     onDelete: (Int) -> Unit,
 ) {
     var draft by rememberSaveable { mutableStateOf("") }
     var pending by remember { mutableStateOf<List<Attachment>>(emptyList()) }
     var menuPost by remember { mutableStateOf<Post?>(null) }
-    val pick = rememberAttachPicker { pending = pending + it }
+    val pickPhoto = rememberPhotoPicker { pending = pending + it }
+    val pickFile = rememberFilePicker { pending = pending + it }
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
@@ -80,20 +84,22 @@ fun FeedScreen(
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    HudButton(text = "+ Файл", onClick = pick, modifier = Modifier.weight(1f))
-                    HudButton(
-                        text = "Опубликовать",
-                        onClick = {
-                            if (draft.isNotBlank() || pending.isNotEmpty()) {
-                                onPublish(draft.trim(), pending)
-                                draft = ""
-                                pending = emptyList()
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        primary = true,
-                    )
+                    HudButton(text = "+ Фото", onClick = pickPhoto, modifier = Modifier.weight(1f))
+                    HudButton(text = "+ Файл", onClick = pickFile, modifier = Modifier.weight(1f))
                 }
+                Spacer(Modifier.height(8.dp))
+                HudButton(
+                    text = "Опубликовать",
+                    onClick = {
+                        if (draft.isNotBlank() || pending.isNotEmpty()) {
+                            onPublish(draft.trim(), pending)
+                            draft = ""
+                            pending = emptyList()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    primary = true,
+                )
             }
         }
         if (posts.isEmpty()) {
@@ -102,7 +108,9 @@ fun FeedScreen(
         items(posts, key = { it.id }) { post ->
             PostCard(
                 post = post,
+                original = post.repostOf?.let { id -> posts.firstOrNull { it.id == id } },
                 onLike = { onLike(post.id) },
+                onRepost = { onRepost(post.repostOf ?: post.id) },
                 onLongClick = { menuPost = post },
             )
         }
@@ -110,8 +118,11 @@ fun FeedScreen(
 
     menuPost?.let { post ->
         val actions = buildList {
-            if (post.author == currentAuthor) add(HudAction("Удалить запись", danger = true) { onDelete(post.id) })
-            add(HudAction(if (post.liked) "Убрать отметку" else "Отметить") { onLike(post.id) })
+            add(HudAction(if (post.liked) "Убрать лайк" else "Поставить лайк") { onLike(post.id) })
+            add(HudAction(if (post.reposted) "Отменить репост" else "Репост") { onRepost(post.id) })
+            if (post.author == currentAuthor) {
+                add(HudAction("Удалить запись", danger = true) { onDelete(post.id) })
+            }
         }
         HudActionSheet(title = "Запись", actions = actions, onDismiss = { menuPost = null })
     }
@@ -119,7 +130,14 @@ fun FeedScreen(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PostCard(post: Post, onLike: () -> Unit, onLongClick: () -> Unit) {
+private fun PostCard(
+    post: Post,
+    original: Post?,
+    onLike: () -> Unit,
+    onRepost: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val isRepost = post.repostOf != null
     Row(
         Modifier
             .fillMaxWidth()
@@ -127,7 +145,7 @@ private fun PostCard(post: Post, onLike: () -> Unit, onLongClick: () -> Unit) {
             .hudPanel(cut = 12.dp)
             .combinedClickable(onClick = {}, onLongClick = onLongClick),
     ) {
-        Box(Modifier.width(3.dp).fillMaxHeight().background(Cyan))
+        Box(Modifier.width(3.dp).fillMaxHeight().background(if (isRepost) Red else Cyan))
         Column(Modifier.weight(1f).padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -140,6 +158,9 @@ private fun PostCard(post: Post, onLike: () -> Unit, onLongClick: () -> Unit) {
                 Spacer(Modifier.weight(1f))
                 Text(post.time, color = Muted, fontSize = 10.sp)
             }
+            if (isRepost) {
+                Text("⟲ РЕПОСТ", color = Muted, fontSize = 10.sp, letterSpacing = 1.sp)
+            }
             if (post.text.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
                 Text(post.text, color = TextMain, fontSize = 15.sp)
@@ -148,18 +169,57 @@ private fun PostCard(post: Post, onLike: () -> Unit, onLongClick: () -> Unit) {
                 Spacer(Modifier.height(8.dp))
                 AttachmentList(post.attachments)
             }
-            Spacer(Modifier.height(8.dp))
-            Row(
-                Modifier.clickable(onClick = onLike).padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = if (post.liked) "▲ ОТМЕЧЕНО · ${post.likes}" else "△ ОТМЕТИТЬ · ${post.likes}",
-                    color = if (post.liked) Cyan else Muted,
-                    fontSize = 11.sp,
-                    letterSpacing = 1.sp,
+            if (isRepost) {
+                Spacer(Modifier.height(8.dp))
+                OriginalCard(original)
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ActionChip(
+                    label = if (post.liked) "♥ ${post.likes}" else "♡ ${post.likes}",
+                    active = post.liked,
+                    onClick = onLike,
                 )
+                Spacer(Modifier.width(14.dp))
+                if (!isRepost) {
+                    ActionChip(
+                        label = "⟲ ${post.reposts}",
+                        active = post.reposted,
+                        onClick = onRepost,
+                    )
+                }
             }
         }
     }
+}
+
+@Composable
+private fun OriginalCard(original: Post?) {
+    Column(Modifier.fillMaxWidth().hudPanel(line = Muted, cut = 8.dp).padding(10.dp)) {
+        if (original == null) {
+            Text("Исходная запись удалена", color = Muted, fontSize = 12.sp)
+            return@Column
+        }
+        Text(original.author.uppercase(), color = Cyan, fontSize = 11.sp, letterSpacing = 1.sp)
+        if (original.text.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            Text(original.text, color = TextMain, fontSize = 13.sp)
+        }
+        if (original.attachments.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            AttachmentList(original.attachments)
+        }
+    }
+}
+
+@Composable
+private fun ActionChip(label: String, active: Boolean, onClick: () -> Unit) {
+    Text(
+        label,
+        color = if (active) Cyan else Muted,
+        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+        fontSize = 12.sp,
+        letterSpacing = 0.5.sp,
+        modifier = Modifier.clickable(onClick = onClick).padding(vertical = 6.dp, horizontal = 4.dp),
+    )
 }

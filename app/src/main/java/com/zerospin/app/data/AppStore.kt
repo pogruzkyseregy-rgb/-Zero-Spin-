@@ -58,7 +58,9 @@ class AppStore(context: Context) {
             posts.forEach { post ->
                 put(JSONObject().put("id", post.id).put("author", post.author).put("time", post.time)
                     .put("text", post.text).put("attachments", attachmentsToJson(post.attachments))
-                    .put("likes", post.likes).put("liked", post.liked))
+                    .put("likes", post.likes).put("liked", post.liked)
+                    .put("reposts", post.reposts).put("reposted", post.reposted)
+                    .put("repostOf", post.repostOf ?: JSONObject.NULL))
             }
         })
         root.put("chats", JSONArray().apply {
@@ -97,7 +99,9 @@ class AppStore(context: Context) {
                 put(JSONObject().put("id", poll.id).put("question", poll.question)
                     .put("options", JSONArray(poll.options))
                     .put("votes", JSONArray(poll.votes))
-                    .put("myVote", poll.myVote ?: JSONObject.NULL))
+                    .put("myVote", poll.myVote ?: JSONObject.NULL)
+                    .put("cover", poll.cover?.let { attachmentsToJson(listOf(it)).getJSONObject(0) } ?: JSONObject.NULL)
+                    .put("attachments", attachmentsToJson(poll.attachments)))
             }
         })
         return root.toString()
@@ -136,6 +140,8 @@ class AppStore(context: Context) {
                 id = o.getInt("id"), author = o.getString("author"), time = o.getString("time"),
                 text = o.getString("text"), attachments = attachmentsFromJson(o.optJSONArray("attachments")),
                 likes = o.optInt("likes"), liked = o.optBoolean("liked"),
+                reposts = o.optInt("reposts"), reposted = o.optBoolean("reposted"),
+                repostOf = if (o.isNull("repostOf")) null else o.getInt("repostOf"),
             ))
         }
         root.optJSONArray("chats")?.objects()?.forEach { o ->
@@ -174,6 +180,8 @@ class AppStore(context: Context) {
                 options = o.getJSONArray("options").strings(),
                 votes = o.getJSONArray("votes").ints(),
                 myVote = if (o.isNull("myVote")) null else o.getInt("myVote"),
+                cover = if (o.isNull("cover")) null else attachmentsFromJson(JSONArray().put(o.getJSONObject("cover"))).firstOrNull(),
+                attachments = attachmentsFromJson(o.optJSONArray("attachments")),
             ))
         }
     }

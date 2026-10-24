@@ -100,6 +100,32 @@ fun ZeroSpinApp() {
         store.polls[i] = poll.copy(votes = votes, myVote = newVote)
     }
 
+    // Репост: счётчик на исходной записи и новая запись со ссылкой на неё. Повторно нажать — отменить.
+    fun repost(id: Int) {
+        val i = store.posts.indexOfFirst { it.id == id }
+        if (i < 0) return
+        val p = store.posts[i]
+        if (p.reposted) {
+            store.posts[i] = p.copy(reposted = false, reposts = (p.reposts - 1).coerceAtLeast(0))
+            store.posts.removeAll { it.repostOf == id && it.author == myName }
+        } else {
+            store.posts[i] = p.copy(reposted = true, reposts = p.reposts + 1)
+            store.posts.add(
+                0,
+                Post(
+                    id = nextId(store.posts.map { it.id }),
+                    author = myName,
+                    time = nowTime(),
+                    text = "",
+                    attachments = emptyList(),
+                    likes = 0,
+                    liked = false,
+                    repostOf = id,
+                ),
+            )
+        }
+    }
+
     fun updateMessage(chatId: Int, id: Int, change: (ChatMessage) -> ChatMessage) {
         store.messages[chatId] = store.messages[chatId].orEmpty().map { if (it.id == id) change(it) else it }
     }
@@ -201,6 +227,7 @@ fun ZeroSpinApp() {
                                 )
                             }
                         },
+                        onRepost = { id -> repost(id) },
                         onDelete = { id -> store.posts.removeAll { it.id == id } },
                     )
 

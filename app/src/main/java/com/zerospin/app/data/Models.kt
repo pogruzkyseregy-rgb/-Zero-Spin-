@@ -28,6 +28,10 @@ data class Post(
     val attachments: List<Attachment>,
     val likes: Int,
     val liked: Boolean,
+    val reposts: Int = 0,
+    val reposted: Boolean = false,
+    /** id исходной записи, если это репост */
+    val repostOf: Int? = null,
 )
 
 data class Chat(
@@ -45,7 +49,7 @@ data class ChatMessage(
     val attachments: List<Attachment> = emptyList(),
     /** id сообщения, на которое это ответ, или null */
     val replyTo: Int? = null,
-    /** Реакции, которые поставил я */
+    /** Реакция, которую поставил я */
     val myReaction: String? = null,
     val reactionCount: Int = 0,
     val edited: Boolean = false,
@@ -77,6 +81,10 @@ data class Poll(
     val options: List<String>,
     val votes: List<Int>,
     val myVote: Int?,
+    /** Фото на фон опроса */
+    val cover: Attachment? = null,
+    /** Прикреплённые фото и файлы */
+    val attachments: List<Attachment> = emptyList(),
 )
 
 /** birthday — yyyy-MM-dd или пусто */
