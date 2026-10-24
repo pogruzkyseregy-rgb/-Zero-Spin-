@@ -3,6 +3,12 @@ package com.zerospin.app.data
 /** Следующий свободный id для списка. */
 fun nextId(ids: Iterable<Int>): Int = (ids.maxOrNull() ?: 0) + 1
 
+/** Хэш PIN-кода: сам код в памяти телефона не хранится. */
+fun hashPin(pin: String): String =
+    java.security.MessageDigest.getInstance("SHA-256")
+        .digest("zerospin:$pin".toByteArray())
+        .joinToString("") { "%02x".format(it) }
+
 /**
  * Ответы «Авроры» в поддержке. Пока это правила по ключевым словам, без сервера.
  * Когда появится бэкенд, сюда подключится запрос к модели.

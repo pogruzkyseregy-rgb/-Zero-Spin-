@@ -19,6 +19,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.zerospin.app.ui.hud.HudAction
+import com.zerospin.app.ui.hud.HudActionSheet
+import com.zerospin.app.ui.theme.Mint
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -50,6 +57,23 @@ fun SettingsScreen(
     onOpenBuilder: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var settingPin by remember { mutableStateOf(false) }
+    var pinMenu by remember { mutableStateOf(false) }
+
+    if (settingPin) {
+        SetPinDialog(onSet = { onChange(settings.copy(pinHash = it)) }, onDismiss = { settingPin = false })
+    }
+    if (pinMenu) {
+        HudActionSheet(
+            title = "PIN-код",
+            actions = listOf(
+                HudAction("Сменить код") { settingPin = true },
+                HudAction("Отключить", danger = true) { onChange(settings.copy(pinHash = "")) },
+            ),
+            onDismiss = { pinMenu = false },
+        )
+    }
+
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Bg)) {
             Column(
@@ -125,14 +149,37 @@ fun SettingsScreen(
                     SwitchRow("Отметки прочтения", "Галочки ✓✓ у ваших сообщений", settings.readReceipts) {
                         onChange(settings.copy(readReceipts = it))
                     }
-                    SwitchRow("Открыт для круга", "Другие могут писать вам первыми", settings.openToAll, last = true) {
+                    SwitchRow("Открыт для круга", "Другие могут писать вам первыми", settings.openToAll) {
                         onChange(settings.copy(openToAll = it))
+                    }
+                    // PIN-код: установка, смена и отключение
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { if (settings.pinHash.isEmpty()) settingPin = true else pinMenu = true }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("PIN-код на вход", color = TextMain, fontSize = 14.sp)
+                            Text("Код при запуске и после минуты в фоне", color = Muted, fontSize = 11.sp)
+                        }
+                        Text(
+                            if (settings.pinHash.isEmpty()) "ВЫКЛ" else "ВКЛ",
+                            color = if (settings.pinHash.isEmpty()) Muted else Mint,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp,
+                        )
                     }
                 }
 
                 HudSection("Оформление") {
-                    SwitchRow("Глитч-эффекты", "Редкие сбои в заголовках и на экранах", settings.glitch, last = true) {
+                    SwitchRow("Глитч-эффекты", "Редкие сбои в заголовках и на экранах", settings.glitch) {
                         onChange(settings.copy(glitch = it))
+                    }
+                    SwitchRow("Квантовое поле", "Частицы и волны на фоне. Выключите для экономии батареи", settings.animatedBackground, last = true) {
+                        onChange(settings.copy(animatedBackground = it))
                     }
                 }
 

@@ -34,6 +34,12 @@ import com.zerospin.app.data.STORY_LIFETIME_MS
 import com.zerospin.app.data.SUPPORT_CHAT_ID
 import com.zerospin.app.data.auroraReply
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.zerospin.app.ui.screens.UnlockScreen
 import com.zerospin.app.data.nextId
 import com.zerospin.app.data.nowMillis
 import com.zerospin.app.data.nowTime
@@ -62,7 +68,7 @@ import kotlinx.coroutines.delay
 
 private const val NO_SECTION = ""
 private const val NO_CHAT = -1
-private const val APP_VERSION = "v0.1"
+private const val APP_VERSION = "v0.2 · Квант"
 
 @Composable
 fun ZeroSpinApp() {
@@ -272,6 +278,27 @@ fun ZeroSpinApp() {
         }
     }
 
+    // Блокировка PIN-кодом: при запуске и после минуты в фоне
+    var unlocked by rememberSaveable { mutableStateOf(store.settings.value.pinHash.isEmpty()) }
+    var stoppedAt by remember { mutableLongStateOf(0L) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> stoppedAt = System.currentTimeMillis()
+                Lifecycle.Event.ON_START ->
+                    if (stoppedAt > 0 && System.currentTimeMillis() - stoppedAt > 60_000) unlocked = false
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    if (settings.pinHash.isNotEmpty() && !unlocked) {
+        UnlockScreen(pinHash = settings.pinHash, animated = settings.animatedBackground, onUnlocked = { unlocked = true })
+        return
+    }
+
     BackHandler(enabled = section != NO_SECTION) { section = NO_SECTION }
 
     CompositionLocalProvider(
@@ -411,6 +438,10 @@ fun ZeroSpinApp() {
                             onOpen = { section = it },
                             onOpenSupport = {
                                 openChatById(SUPPORT_CHAT_ID)
+                                selectTab(1)
+                            },
+                            onOpenSaved = {
+                                openChatById(SAVED_CHAT_ID)
                                 selectTab(1)
                             },
                         )
