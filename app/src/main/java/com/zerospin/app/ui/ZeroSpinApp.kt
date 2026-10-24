@@ -17,7 +17,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import com.zerospin.app.data.AppSettings
 import com.zerospin.app.data.AppStore
 import com.zerospin.app.data.Attachment
 import com.zerospin.app.data.Chat
@@ -26,7 +25,6 @@ import com.zerospin.app.data.Event
 import com.zerospin.app.data.Note
 import com.zerospin.app.data.Poll
 import com.zerospin.app.data.Post
-import com.zerospin.app.data.Profile
 import com.zerospin.app.data.SUPPORT_CHAT_ID
 import com.zerospin.app.data.auroraReply
 import com.zerospin.app.data.nextId
@@ -41,18 +39,20 @@ import com.zerospin.app.ui.screens.AppsScreen
 import com.zerospin.app.ui.screens.ChatsScreen
 import com.zerospin.app.ui.screens.CoinScreen
 import com.zerospin.app.ui.screens.EventsScreen
-import com.zerospin.app.ui.screens.SECTION_COIN
 import com.zerospin.app.ui.screens.FeedScreen
 import com.zerospin.app.ui.screens.NotesScreen
 import com.zerospin.app.ui.screens.PollsScreen
 import com.zerospin.app.ui.screens.ProfileScreen
+import com.zerospin.app.ui.screens.SECTION_COIN
 import com.zerospin.app.ui.screens.SECTION_EVENTS
 import com.zerospin.app.ui.screens.SECTION_NOTES
 import com.zerospin.app.ui.screens.SECTION_POLLS
-import com.zerospin.app.ui.screens.SettingsDialog
+import com.zerospin.app.ui.screens.SettingsScreen
+import kotlinx.coroutines.delay
 
 private const val NO_SECTION = ""
 private const val NO_CHAT = -1
+private const val APP_VERSION = "v0.1"
 
 @Composable
 fun ZeroSpinApp() {
@@ -77,6 +77,7 @@ fun ZeroSpinApp() {
     var showSettings by rememberSaveable { mutableStateOf(false) }
 
     val myName = store.profile.value.name
+    val settings = store.settings.value
 
     fun selectTab(index: Int) {
         tab = index
@@ -99,6 +100,61 @@ fun ZeroSpinApp() {
         store.polls[i] = poll.copy(votes = votes, myVote = newVote)
     }
 
+    fun updateMessage(chatId: Int, id: Int, change: (ChatMessage) -> ChatMessage) {
+        store.messages[chatId] = store.messages[chatId].orEmpty().map { if (it.id == id) change(it) else it }
+    }
+
+    fun react(chatId: Int, id: Int, emoji: String) = updateMessage(chatId, id) { m ->
+        when {
+            m.myReaction == emoji -> m.copy(myReaction = null, reactionCount = (m.reactionCount - 1).coerceAtLeast(0))
+            m.myReaction == null -> m.copy(myReaction = emoji, reactionCount = m.reactionCount + 1)
+            else -> m.copy(myReaction = emoji)
+        }
+    }
+
+    fun updateChat(id: Int, change: (Chat) -> Chat) {
+        val i = store.chats.indexOfFirst { it.id == id }
+        if (i >= 0) store.chats[i] = change(store.chats[i])
+    }
+
+    fun deleteChat(id: Int) {
+        if (id == SUPPORT_CHAT_ID) return
+        store.chats.removeAll { it.id == id }
+        store.messages.remove(id)
+        if (openChat == id) openChat = NO_CHAT
+    }
+
+    fun sendMessage(chatId: Int, text: String, attachments: List<Attachment>, replyTo: Int?) {
+        val list = store.messages[chatId].orEmpty()
+        store.messages[chatId] = list + ChatMessage(
+            id = nextId(list.map { it.id }),
+            fromMe = true,
+            text = text,
+            time = nowTime(),
+            attachments = attachments,
+            replyTo = replyTo,
+        )
+        if (chatId == SUPPORT_CHAT_ID) {
+            val after = store.messages[chatId].orEmpty()
+            store.messages[chatId] = after + ChatMessage(
+                id = nextId(after.map { it.id }),
+                fromMe = false,
+                text = auroraReply(text),
+                time = nowTime(),
+            )
+        }
+    }
+
+    // Галочки прочтения: через секунду после открытия чата отмечаем мои сообщения прочитанными
+    LaunchedEffect(openChat, store.messages[openChat]?.size) {
+        if (openChat >= 0 && store.messages[openChat].orEmpty().any { it.fromMe && !it.read }) {
+            delay(1000)
+            store.messages[openChat] = store.messages[openChat].orEmpty().map {
+                if (it.fromMe) it.copy(read = true) else it
+            }
+        }
+    }
+
     BackHandler(enabled = section != NO_SECTION) { section = NO_SECTION }
 
     HudBackground {
@@ -109,6 +165,7 @@ fun ZeroSpinApp() {
                     title = if (tab == 2 && section != NO_SECTION) section.uppercase() else tabs[tab].title,
                     status = "● ONLINE · КРУГ",
                     onSettings = { showSettings = true },
+                    glitch = settings.glitch,
                 )
             },
             bottomBar = {
@@ -119,6 +176,7 @@ fun ZeroSpinApp() {
                 when (tab) {
                     0 -> FeedScreen(
                         posts = store.posts,
+                        currentAuthor = myName,
                         onPublish = { text, attachments ->
                             store.posts.add(
                                 0,
@@ -143,11 +201,13 @@ fun ZeroSpinApp() {
                                 )
                             }
                         },
+                        onDelete = { id -> store.posts.removeAll { it.id == id } },
                     )
 
                     1 -> ChatsScreen(
                         chats = store.chats,
                         messages = store.messages,
+                        settings = settings,
                         openChatId = openChat,
                         onOpenChat = { openChat = it },
                         onCreateChat = {
@@ -155,14 +215,13 @@ fun ZeroSpinApp() {
                             store.chats.add(Chat(id, "Канал $id"))
                             store.messages[id] = emptyList()
                         },
-                        onSend = { chatId, text, attachments ->
-                            store.messages[chatId] = store.messages[chatId].orEmpty() +
-                                ChatMessage(fromMe = true, text = text, time = nowTime(), attachments = attachments)
-                            if (chatId == SUPPORT_CHAT_ID) {
-                                store.messages[chatId] = store.messages[chatId].orEmpty() +
-                                    ChatMessage(fromMe = false, text = auroraReply(text), time = nowTime())
-                            }
-                        },
+                        onSend = { chatId, text, attachments, replyTo -> sendMessage(chatId, text, attachments, replyTo) },
+                        onEdit = { chatId, id, text -> updateMessage(chatId, id) { it.copy(text = text, edited = true) } },
+                        onDelete = { chatId, id -> store.messages[chatId] = store.messages[chatId].orEmpty().filter { it.id != id } },
+                        onReact = { chatId, id, emoji -> react(chatId, id, emoji) },
+                        onTogglePin = { id -> updateChat(id) { it.copy(pinned = !it.pinned) } },
+                        onToggleMute = { id -> updateChat(id) { it.copy(muted = !it.muted) } },
+                        onDeleteChat = { id -> deleteChat(id) },
                     )
 
                     2 -> when (section) {
@@ -203,9 +262,15 @@ fun ZeroSpinApp() {
     }
 
     if (showSettings) {
-        SettingsDialog(
-            settings = store.settings.value,
+        SettingsScreen(
+            settings = settings,
+            profile = store.profile.value,
+            version = APP_VERSION,
             onChange = { store.settings.value = it },
+            onOpenProfile = {
+                showSettings = false
+                selectTab(3)
+            },
             onDismiss = { showSettings = false },
         )
     }

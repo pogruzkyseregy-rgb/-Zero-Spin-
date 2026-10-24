@@ -7,6 +7,9 @@ import java.util.Locale
 /** Идентификатор встроенного канала поддержки «Аврора». */
 const val SUPPORT_CHAT_ID = 0
 
+/** Реакции, которые можно поставить на сообщение. */
+val QuickReactions = listOf("❤️", "🔥", "😂", "👍", "😮", "😢")
+
 enum class AttachKind { IMAGE, VIDEO, FILE }
 
 /** Вложение: ссылка на файл на телефоне (content:// uri), сам файл не копируется. */
@@ -30,13 +33,25 @@ data class Post(
 data class Chat(
     val id: Int,
     val name: String,
+    val pinned: Boolean = false,
+    val muted: Boolean = false,
 )
 
 data class ChatMessage(
+    val id: Int,
     val fromMe: Boolean,
     val text: String,
     val time: String,
     val attachments: List<Attachment> = emptyList(),
+    /** id сообщения, на которое это ответ, или null */
+    val replyTo: Int? = null,
+    /** Реакции, которые поставил я */
+    val myReaction: String? = null,
+    val reactionCount: Int = 0,
+    val edited: Boolean = false,
+    /** Прочитано собеседником (для галочек у моих сообщений) */
+    val read: Boolean = false,
+    val createdAt: Long = nowMillis(),
 )
 
 data class Note(
@@ -74,10 +89,13 @@ data class Profile(
 )
 
 data class AppSettings(
-    val notifications: Boolean,
-    val sounds: Boolean,
-    val showOnline: Boolean,
-    val openToAll: Boolean,
+    val notifications: Boolean = true,
+    val sounds: Boolean = true,
+    val vibration: Boolean = true,
+    val showOnline: Boolean = true,
+    val readReceipts: Boolean = true,
+    val openToAll: Boolean = true,
+    val glitch: Boolean = true,
 )
 
 fun nowTime(): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())

@@ -240,7 +240,7 @@ fun HudIcon(kind: HudIconKind, color: Color, modifier: Modifier = Modifier.size(
 data class HudTab(val title: String, val icon: HudIconKind)
 
 @Composable
-fun HudTopBar(title: String, status: String, onSettings: () -> Unit) {
+fun HudTopBar(title: String, status: String, onSettings: () -> Unit, glitch: Boolean = false) {
     Column(Modifier.fillMaxWidth().statusBarsPadding()) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
@@ -259,7 +259,14 @@ fun HudTopBar(title: String, status: String, onSettings: () -> Unit) {
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, color = Cyan, fontWeight = FontWeight.Bold, fontSize = 17.sp, letterSpacing = 2.sp)
+                GlitchText(
+                    text = title,
+                    color = Cyan,
+                    fontSize = 17.sp,
+                    enabled = glitch,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp,
+                )
                 Text(status, color = Muted, fontSize = 10.sp, letterSpacing = 1.sp)
             }
             TargetRing(Modifier.size(42.dp).clickable(onClick = onSettings)) {

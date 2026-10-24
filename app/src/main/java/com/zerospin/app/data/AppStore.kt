@@ -9,14 +9,15 @@ import org.json.JSONObject
 
 /**
  * Всё состояние приложения в одном месте.
- * Изменения видны интерфейсу сразу, а сохранение в SharedPreferences делает ZeroSpinApp при каждом изменении.
+ * Изменения сразу видны интерфейсу, а ZeroSpinApp сохраняет их в SharedPreferences.
+ * Новые поля читаются с значениями по умолчанию, поэтому старые данные не ломаются.
  */
 class AppStore(context: Context) {
 
     private val prefs = context.getSharedPreferences("zerospin_store", Context.MODE_PRIVATE)
 
     val profile = mutableStateOf(Profile("Адонис", "adonis", "В сети", "", ""))
-    val settings = mutableStateOf(AppSettings(notifications = true, sounds = true, showOnline = true, openToAll = true))
+    val settings = mutableStateOf(AppSettings())
     val posts = mutableStateListOf<Post>()
     val chats = mutableStateListOf<Chat>()
     val messages = mutableStateMapOf<Int, List<ChatMessage>>()
@@ -26,17 +27,22 @@ class AppStore(context: Context) {
 
     init {
         prefs.getString("all", null)?.let { load(it) }
-        if (chats.isEmpty()) addSupportChat()
+        if (chats.none { it.id == SUPPORT_CHAT_ID }) addSupportChat()
     }
 
     private fun addSupportChat() {
-        chats.add(0, Chat(SUPPORT_CHAT_ID, "Аврора · поддержка"))
+        chats.add(0, Chat(SUPPORT_CHAT_ID, "Аврора · поддержка", pinned = true))
         messages[SUPPORT_CHAT_ID] = listOf(
-            ChatMessage(false, "Привет, я Аврора. Спросите, как пользоваться Zero Spin: профиль, чаты, заметки, события, опросы.", nowTime()),
+            ChatMessage(
+                id = 1,
+                fromMe = false,
+                text = "Привет, я Аврора. Спросите, как пользоваться Zero Spin: профиль, чаты, заметки, события, опросы.",
+                time = nowTime(),
+            ),
         )
     }
 
-    /** Полный снимок состояния в JSON. Читает все состояния, поэтому snapshotFlow реагирует на любые изменения. */
+    /** Полный снимок состояния в JSON. Чтение всех состояний нужно, чтобы snapshotFlow реагировал на любые изменения. */
     fun toJsonString(): String {
         val p = profile.value
         val s = settings.value
@@ -45,8 +51,9 @@ class AppStore(context: Context) {
             .put("name", p.name).put("nick", p.nick).put("status", p.status)
             .put("bio", p.bio).put("birthday", p.birthday))
         root.put("settings", JSONObject()
-            .put("notifications", s.notifications).put("sounds", s.sounds)
-            .put("showOnline", s.showOnline).put("openToAll", s.openToAll))
+            .put("notifications", s.notifications).put("sounds", s.sounds).put("vibration", s.vibration)
+            .put("showOnline", s.showOnline).put("readReceipts", s.readReceipts)
+            .put("openToAll", s.openToAll).put("glitch", s.glitch))
         root.put("posts", JSONArray().apply {
             posts.forEach { post ->
                 put(JSONObject().put("id", post.id).put("author", post.author).put("time", post.time)
@@ -55,14 +62,23 @@ class AppStore(context: Context) {
             }
         })
         root.put("chats", JSONArray().apply {
-            chats.forEach { put(JSONObject().put("id", it.id).put("name", it.name)) }
+            chats.forEach {
+                put(JSONObject().put("id", it.id).put("name", it.name)
+                    .put("pinned", it.pinned).put("muted", it.muted))
+            }
         })
         root.put("messages", JSONObject().apply {
             messages.forEach { (chatId, list) ->
                 put(chatId.toString(), JSONArray().apply {
                     list.forEach { m ->
-                        put(JSONObject().put("fromMe", m.fromMe).put("text", m.text).put("time", m.time)
-                            .put("attachments", attachmentsToJson(m.attachments)))
+                        put(JSONObject()
+                            .put("id", m.id).put("fromMe", m.fromMe).put("text", m.text).put("time", m.time)
+                            .put("attachments", attachmentsToJson(m.attachments))
+                            .put("replyTo", m.replyTo ?: JSONObject.NULL)
+                            .put("myReaction", m.myReaction ?: JSONObject.NULL)
+                            .put("reactionCount", m.reactionCount)
+                            .put("edited", m.edited).put("read", m.read)
+                            .put("createdAt", m.createdAt))
                     }
                 })
             }
@@ -104,11 +120,15 @@ class AppStore(context: Context) {
             )
         }
         root.optJSONObject("settings")?.let { o ->
+            val d = AppSettings()
             settings.value = AppSettings(
-                notifications = o.optBoolean("notifications", true),
-                sounds = o.optBoolean("sounds", true),
-                showOnline = o.optBoolean("showOnline", true),
-                openToAll = o.optBoolean("openToAll", true),
+                notifications = o.optBoolean("notifications", d.notifications),
+                sounds = o.optBoolean("sounds", d.sounds),
+                vibration = o.optBoolean("vibration", d.vibration),
+                showOnline = o.optBoolean("showOnline", d.showOnline),
+                readReceipts = o.optBoolean("readReceipts", d.readReceipts),
+                openToAll = o.optBoolean("openToAll", d.openToAll),
+                glitch = o.optBoolean("glitch", d.glitch),
             )
         }
         root.optJSONArray("posts")?.objects()?.forEach { o ->
@@ -119,14 +139,23 @@ class AppStore(context: Context) {
             ))
         }
         root.optJSONArray("chats")?.objects()?.forEach { o ->
-            chats.add(Chat(o.getInt("id"), o.getString("name")))
+            chats.add(Chat(o.getInt("id"), o.getString("name"), o.optBoolean("pinned"), o.optBoolean("muted")))
         }
         root.optJSONObject("messages")?.let { obj ->
             obj.keys().forEach { key ->
-                val list = obj.getJSONArray(key).objects().map { o ->
+                val list = obj.getJSONArray(key).objects().mapIndexed { index, o ->
                     ChatMessage(
-                        fromMe = o.optBoolean("fromMe"), text = o.getString("text"), time = o.optString("time"),
+                        id = o.optInt("id", index + 1),
+                        fromMe = o.optBoolean("fromMe"),
+                        text = o.getString("text"),
+                        time = o.optString("time"),
                         attachments = attachmentsFromJson(o.optJSONArray("attachments")),
+                        replyTo = if (o.isNull("replyTo")) null else o.getInt("replyTo"),
+                        myReaction = if (o.isNull("myReaction")) null else o.getString("myReaction"),
+                        reactionCount = o.optInt("reactionCount"),
+                        edited = o.optBoolean("edited"),
+                        read = o.optBoolean("read"),
+                        createdAt = o.optLong("createdAt", nowMillis()),
                     )
                 }
                 messages[key.toInt()] = list

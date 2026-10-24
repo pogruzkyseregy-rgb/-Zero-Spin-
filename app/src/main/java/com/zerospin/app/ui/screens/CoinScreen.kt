@@ -3,6 +3,7 @@ package com.zerospin.app.ui.screens
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,14 +30,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zerospin.app.R
 import com.zerospin.app.data.CoinStore
 import com.zerospin.app.ui.hud.HudButton
-import com.zerospin.app.ui.hud.TargetRing
 import com.zerospin.app.ui.hud.hudPanel
 import com.zerospin.app.ui.theme.Cyan
 import com.zerospin.app.ui.theme.Muted
@@ -45,8 +47,9 @@ import com.zerospin.app.ui.theme.Violet
 import com.zerospin.app.widget.CoinWidget
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlin.random.Random
 
-/** Монетка Zero Spin. Счёт и история общие с виджетом на рабочем столе. */
+/** Монетка Zero Spin с текстурой. Счёт и история общие с виджетом на рабочем столе. */
 @Composable
 fun CoinScreen() {
     val context = LocalContext.current
@@ -54,6 +57,8 @@ fun CoinScreen() {
     // Меняется после каждого броска или сброса, чтобы перечитать счёт из хранилища
     var revision by rememberSaveable { mutableIntStateOf(0) }
     var rotTarget by remember { mutableFloatStateOf(0f) }
+    var restFrom by remember { mutableIntStateOf(CoinStore.SIDE_A) }
+    var rotStart by remember { mutableFloatStateOf(0f) }
 
     val rotation by animateFloatAsState(
         targetValue = rotTarget,
@@ -68,13 +73,22 @@ fun CoinScreen() {
     val history = remember(revision) { CoinStore.history(context) }
     val total = countA + countB
 
+    // Какая сторона видна во время вращения: каждый полуоборот меняет её
+    val halfTurnsDone = ((rotation - rotStart) / 180f).roundToInt()
+    val visibleSide = when {
+        !spinning -> side
+        else -> if (abs(halfTurnsDone) % 2 == 0) restFrom else 1 - restFrom
+    }
+
     fun toss() {
         if (spinning) return
         val from = CoinStore.last(context)
         val result = CoinStore.toss()
         // Полуобороты: 10 или 12, плюс один, если сторона должна смениться
-        var halfTurns = 10 + 2 * kotlin.random.Random.nextInt(2)
+        var halfTurns = 10 + 2 * Random.nextInt(2)
         if (result != from) halfTurns += 1
+        restFrom = from
+        rotStart = rotTarget
         rotTarget += halfTurns * 180f
         CoinStore.record(context, result)
         CoinWidget.refreshAll(context)
@@ -97,7 +111,7 @@ fun CoinScreen() {
         Spacer(Modifier.height(12.dp))
         Box(
             Modifier
-                .size(220.dp)
+                .size(230.dp)
                 .graphicsLayer {
                     rotationY = rotation
                     cameraDistance = 16f * density
@@ -105,35 +119,29 @@ fun CoinScreen() {
                 .clickable { toss() },
             contentAlignment = Alignment.Center,
         ) {
-            TargetRing(Modifier.size(220.dp)) {
-                Text(
-                    text = when {
-                        spinning -> "…"
-                        side == CoinStore.SIDE_A -> "AVRORA"
-                        else -> "ZERO\nSPIN"
-                    },
-                    color = if (side == CoinStore.SIDE_A) Cyan else Violet,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 22.sp,
-                    letterSpacing = 2.sp,
-                    textAlign = TextAlign.Center,
-                )
-            }
+            Image(
+                painter = painterResource(
+                    if (visibleSide == CoinStore.SIDE_A) R.drawable.coin_face_avrora else R.drawable.coin_face_zero,
+                ),
+                contentDescription = if (visibleSide == CoinStore.SIDE_A) "AvrorA" else "Zero Spin",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
 
         Spacer(Modifier.height(20.dp))
         Text(
-            text = if (CoinStore.hasFlipped(context)) {
-                "Последний бросок: ${if (side == CoinStore.SIDE_A) "AvrorA" else "Zero Spin"}"
-            } else {
-                "Нажмите монетку или кнопку ниже"
+            text = when {
+                spinning -> "Монетка в воздухе…"
+                CoinStore.hasFlipped(context) -> "Последний бросок: ${if (side == CoinStore.SIDE_A) "AvrorA" else "Zero Spin"}"
+                else -> "Нажмите монетку или кнопку ниже"
             },
             color = TextMain,
             fontSize = 13.sp,
         )
         Spacer(Modifier.height(16.dp))
 
-        HudButton(text = "Подбросить", onClick = { toss() }, modifier = Modifier.fillMaxWidth())
+        HudButton(text = "Подбросить", onClick = { toss() }, modifier = Modifier.fillMaxWidth(), primary = true)
         Spacer(Modifier.height(16.dp))
 
         Row(Modifier.fillMaxWidth().hudPanel(cut = 12.dp).padding(14.dp)) {

@@ -5,25 +5,23 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zerospin.app.data.Event
 import com.zerospin.app.data.nextId
-import com.zerospin.app.ui.components.MutedLabel
 import com.zerospin.app.ui.hud.HudButton
 import com.zerospin.app.ui.hud.HudEmptyState
-import com.zerospin.app.ui.hud.hudFieldColors
+import com.zerospin.app.ui.hud.HudTextField
 import com.zerospin.app.ui.hud.hudPanel
 import com.zerospin.app.ui.theme.Cyan
 import com.zerospin.app.ui.theme.Muted
@@ -32,7 +30,7 @@ import com.zerospin.app.ui.theme.TextMain
 import com.zerospin.app.ui.theme.Violet
 
 private val DateRegex = Regex("""^\d{4}-\d{2}-\d{2}$""")
-private val TimeRegex = Regex("""^(\d{2}:\d{2})?$""")
+private val TimeRegex = Regex("""^([01]\d|2[0-3]):[0-5]\d$""")
 
 @Composable
 fun EventsScreen(
@@ -61,6 +59,7 @@ fun EventsScreen(
                 text = "+ Новое событие",
                 onClick = { adding = true },
                 modifier = Modifier.fillMaxWidth(),
+                primary = true,
             )
         }
         if (sorted.isEmpty()) {
@@ -69,7 +68,7 @@ fun EventsScreen(
         items(sorted, key = { it.id }) { event ->
             Row(
                 Modifier.fillMaxWidth().hudPanel(cut = 12.dp).padding(14.dp),
-                verticalAlignment = androidx.compose.ui.Alignment.Top,
+                verticalAlignment = Alignment.Top,
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -107,9 +106,18 @@ private fun EventForm(nextId: Int, onSave: (Event) -> Unit, onCancel: () -> Unit
     var place by rememberSaveable { mutableStateOf("") }
     var desc by rememberSaveable { mutableStateOf("") }
 
-    val dateOk = DateRegex.matches(date.trim())
-    val timeOk = TimeRegex.matches(time.trim())
-    val canSave = title.isNotBlank() && dateOk && timeOk
+    val titleError = if (title.isBlank()) "Назовите событие" else null
+    val dateError = when {
+        date.isBlank() -> "Укажите дату"
+        !DateRegex.matches(date) -> "Формат: 2026-11-07"
+        else -> null
+    }
+    val timeError = when {
+        time.isBlank() -> null
+        !TimeRegex.matches(time) -> "Формат: 19:30"
+        else -> null
+    }
+    val canSave = titleError == null && dateError == null && timeError == null
 
     Column(
         Modifier
@@ -117,28 +125,36 @@ private fun EventForm(nextId: Int, onSave: (Event) -> Unit, onCancel: () -> Unit
             .verticalScroll(rememberScrollState())
             .padding(14.dp),
     ) {
-        MutedLabel("НАЗВАНИЕ")
-        OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true,
-            modifier = Modifier.fillMaxWidth(), colors = hudFieldColors(), shape = RoundedCornerShape(6.dp))
-        Spacer(Modifier.height(12.dp))
-        MutedLabel("ДАТА · ГГГГ-ММ-ДД")
-        OutlinedTextField(value = date, onValueChange = { date = it }, singleLine = true,
-            isError = date.isNotBlank() && !dateOk,
-            modifier = Modifier.fillMaxWidth(), colors = hudFieldColors(), shape = RoundedCornerShape(6.dp))
-        Spacer(Modifier.height(12.dp))
-        MutedLabel("ВРЕМЯ · ЧЧ:ММ, НЕОБЯЗАТЕЛЬНО")
-        OutlinedTextField(value = time, onValueChange = { time = it }, singleLine = true,
-            isError = time.isNotBlank() && !timeOk,
-            modifier = Modifier.fillMaxWidth(), colors = hudFieldColors(), shape = RoundedCornerShape(6.dp))
-        Spacer(Modifier.height(12.dp))
-        MutedLabel("МЕСТО")
-        OutlinedTextField(value = place, onValueChange = { place = it }, singleLine = true,
-            modifier = Modifier.fillMaxWidth(), colors = hudFieldColors(), shape = RoundedCornerShape(6.dp))
-        Spacer(Modifier.height(12.dp))
-        MutedLabel("ОПИСАНИЕ")
-        OutlinedTextField(value = desc, onValueChange = { desc = it }, minLines = 3,
-            modifier = Modifier.fillMaxWidth(), colors = hudFieldColors(), shape = RoundedCornerShape(6.dp))
-        Spacer(Modifier.height(16.dp))
+        HudTextField(
+            value = title, onValueChange = { title = it }, label = "Название",
+            placeholder = "Встреча, день рождения…", error = titleError, maxLength = 60,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(14.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            HudTextField(
+                value = date, onValueChange = { date = it }, label = "Дата",
+                placeholder = "ГГГГ-ММ-ДД", error = dateError, maxLength = 10,
+                modifier = Modifier.weight(1.4f),
+            )
+            HudTextField(
+                value = time, onValueChange = { time = it }, label = "Время",
+                placeholder = "ЧЧ:ММ", hint = "Необязательно", error = timeError, maxLength = 5,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Spacer(Modifier.height(14.dp))
+        HudTextField(
+            value = place, onValueChange = { place = it }, label = "Место",
+            placeholder = "Адрес или название", maxLength = 80, modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(14.dp))
+        HudTextField(
+            value = desc, onValueChange = { desc = it }, label = "Описание",
+            placeholder = "Что взять, как добраться…", singleLine = false, minLines = 3,
+            maxLength = 500, modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(18.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             HudButton(text = "Назад", onClick = onCancel, modifier = Modifier.weight(1f))
             HudButton(
@@ -149,6 +165,7 @@ private fun EventForm(nextId: Int, onSave: (Event) -> Unit, onCancel: () -> Unit
                     }
                 },
                 modifier = Modifier.weight(1f),
+                primary = true,
             )
         }
     }

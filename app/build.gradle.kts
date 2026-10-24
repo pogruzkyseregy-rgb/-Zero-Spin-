@@ -12,13 +12,29 @@ android {
         applicationId = "com.zerospin.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // Номер сборки GitHub растёт с каждым запуском, поэтому новая сборка ставится поверх старой
+        val runNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = runNumber
+        versionName = "0.1.$runNumber"
+    }
+
+    // Один и тот же ключ для всех сборок: Android ставит обновление только при совпадении подписи
+    signingConfigs {
+        create("zerospin") {
+            storeFile = file("zerospin-release.jks")
+            storePassword = "zerospin-2026"
+            keyAlias = "zerospin"
+            keyPassword = "zerospin-2026"
+        }
     }
 
     buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("zerospin")
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("zerospin")
         }
     }
 

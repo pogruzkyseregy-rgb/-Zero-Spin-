@@ -5,9 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -21,11 +19,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zerospin.app.data.Poll
 import com.zerospin.app.data.nextId
-import com.zerospin.app.ui.components.MutedLabel
 import com.zerospin.app.ui.hud.HudButton
 import com.zerospin.app.ui.hud.HudEmptyState
+import com.zerospin.app.ui.hud.HudTextField
 import com.zerospin.app.ui.hud.SegmentedBar
-import com.zerospin.app.ui.hud.hudFieldColors
 import com.zerospin.app.ui.hud.hudPanel
 import com.zerospin.app.ui.theme.Cyan
 import com.zerospin.app.ui.theme.Muted
@@ -57,6 +54,7 @@ fun PollsScreen(
                 text = "+ Новый опрос",
                 onClick = { adding = true },
                 modifier = Modifier.fillMaxWidth(),
+                primary = true,
             )
         }
         if (polls.isEmpty()) {
@@ -97,7 +95,11 @@ private fun PollCard(poll: Poll, onVote: (Int) -> Unit) {
             }
         }
         Spacer(Modifier.height(4.dp))
-        Text("голосов: ${poll.votes.sum()} · нажмите вариант, чтобы проголосовать или снять голос", color = Muted, fontSize = 10.sp)
+        Text(
+            "голосов: ${poll.votes.sum()} · нажмите вариант, чтобы проголосовать или снять голос",
+            color = Muted,
+            fontSize = 10.sp,
+        )
     }
 }
 
@@ -107,7 +109,12 @@ private fun PollForm(nextId: Int, onSave: (Poll) -> Unit, onCancel: () -> Unit) 
     var options by rememberSaveable { mutableStateOf("") }
 
     val list = options.split(";").map { it.trim() }.filter { it.isNotEmpty() }
-    val canSave = question.isNotBlank() && list.size >= 2
+    val questionError = if (question.isBlank()) "Задайте вопрос" else null
+    val optionsError = when {
+        list.size < 2 -> "Нужно минимум два варианта"
+        else -> null
+    }
+    val canSave = questionError == null && optionsError == null
 
     Column(
         Modifier
@@ -115,14 +122,20 @@ private fun PollForm(nextId: Int, onSave: (Poll) -> Unit, onCancel: () -> Unit) 
             .verticalScroll(rememberScrollState())
             .padding(14.dp),
     ) {
-        MutedLabel("ВОПРОС")
-        OutlinedTextField(value = question, onValueChange = { question = it }, minLines = 2,
-            modifier = Modifier.fillMaxWidth(), colors = hudFieldColors(), shape = RoundedCornerShape(6.dp))
-        Spacer(Modifier.height(12.dp))
-        MutedLabel("ВАРИАНТЫ ЧЕРЕЗ «;» · МИНИМУМ ДВА")
-        OutlinedTextField(value = options, onValueChange = { options = it }, minLines = 2,
-            modifier = Modifier.fillMaxWidth(), colors = hudFieldColors(), shape = RoundedCornerShape(6.dp))
-        Spacer(Modifier.height(16.dp))
+        HudTextField(
+            value = question, onValueChange = { question = it }, label = "Вопрос",
+            placeholder = "Во сколько встречаемся?", error = questionError,
+            singleLine = false, minLines = 2, maxLength = 140, modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(14.dp))
+        HudTextField(
+            value = options, onValueChange = { options = it }, label = "Варианты",
+            placeholder = "18:00; 19:30; 21:00",
+            hint = "Варианты разделяйте знаком «;»",
+            error = optionsError, singleLine = false, minLines = 2, maxLength = 300,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(18.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             HudButton(text = "Назад", onClick = onCancel, modifier = Modifier.weight(1f))
             HudButton(
@@ -141,6 +154,7 @@ private fun PollForm(nextId: Int, onSave: (Poll) -> Unit, onCancel: () -> Unit) 
                     }
                 },
                 modifier = Modifier.weight(1f),
+                primary = true,
             )
         }
     }

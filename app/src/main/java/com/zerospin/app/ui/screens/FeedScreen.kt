@@ -1,23 +1,23 @@
 package com.zerospin.app.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -34,22 +34,28 @@ import com.zerospin.app.data.Attachment
 import com.zerospin.app.data.Post
 import com.zerospin.app.ui.components.AttachmentList
 import com.zerospin.app.ui.components.rememberAttachPicker
+import com.zerospin.app.ui.hud.HudAction
+import com.zerospin.app.ui.hud.HudActionSheet
 import com.zerospin.app.ui.hud.HudButton
 import com.zerospin.app.ui.hud.HudEmptyState
-import com.zerospin.app.ui.hud.hudFieldColors
+import com.zerospin.app.ui.hud.HudTextField
 import com.zerospin.app.ui.hud.hudPanel
 import com.zerospin.app.ui.theme.Cyan
 import com.zerospin.app.ui.theme.Muted
 import com.zerospin.app.ui.theme.TextMain
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FeedScreen(
     posts: List<Post>,
+    currentAuthor: String,
     onPublish: (String, List<Attachment>) -> Unit,
     onLike: (Int) -> Unit,
+    onDelete: (Int) -> Unit,
 ) {
     var draft by rememberSaveable { mutableStateOf("") }
     var pending by remember { mutableStateOf<List<Attachment>>(emptyList()) }
+    var menuPost by remember { mutableStateOf<Post?>(null) }
     val pick = rememberAttachPicker { pending = pending + it }
 
     LazyColumn(
@@ -58,20 +64,21 @@ fun FeedScreen(
     ) {
         item {
             Column(Modifier.fillMaxWidth().hudPanel(cut = 12.dp).padding(12.dp)) {
-                OutlinedTextField(
+                HudTextField(
                     value = draft,
                     onValueChange = { draft = it },
-                    placeholder = { Text("Новая запись…", color = Muted) },
-                    maxLines = 4,
+                    label = "Новая запись",
+                    placeholder = "Что нового в круге?",
+                    singleLine = false,
+                    minLines = 2,
+                    maxLength = 1000,
                     modifier = Modifier.fillMaxWidth(),
-                    colors = hudFieldColors(),
-                    shape = RoundedCornerShape(6.dp),
                 )
                 if (pending.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
                     AttachmentList(pending, onRemove = { i -> pending = pending.filterIndexed { idx, _ -> idx != i } })
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     HudButton(text = "+ Файл", onClick = pick, modifier = Modifier.weight(1f))
                     HudButton(
@@ -84,6 +91,7 @@ fun FeedScreen(
                             }
                         },
                         modifier = Modifier.weight(1f),
+                        primary = true,
                     )
                 }
             }
@@ -92,18 +100,32 @@ fun FeedScreen(
             item { HudEmptyState("ЛЕНТА ПУСТА", "Напишите первую запись круга") }
         }
         items(posts, key = { it.id }) { post ->
-            PostCard(post = post, onLike = { onLike(post.id) })
+            PostCard(
+                post = post,
+                onLike = { onLike(post.id) },
+                onLongClick = { menuPost = post },
+            )
         }
+    }
+
+    menuPost?.let { post ->
+        val actions = buildList {
+            if (post.author == currentAuthor) add(HudAction("Удалить запись", danger = true) { onDelete(post.id) })
+            add(HudAction(if (post.liked) "Убрать отметку" else "Отметить") { onLike(post.id) })
+        }
+        HudActionSheet(title = "Запись", actions = actions, onDismiss = { menuPost = null })
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PostCard(post: Post, onLike: () -> Unit) {
+private fun PostCard(post: Post, onLike: () -> Unit, onLongClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
-            .hudPanel(cut = 12.dp),
+            .hudPanel(cut = 12.dp)
+            .combinedClickable(onClick = {}, onLongClick = onLongClick),
     ) {
         Box(Modifier.width(3.dp).fillMaxHeight().background(Cyan))
         Column(Modifier.weight(1f).padding(12.dp)) {

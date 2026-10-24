@@ -5,9 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -15,7 +13,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -26,7 +23,7 @@ import com.zerospin.app.data.nextId
 import com.zerospin.app.data.nowMillis
 import com.zerospin.app.ui.hud.HudButton
 import com.zerospin.app.ui.hud.HudEmptyState
-import com.zerospin.app.ui.hud.hudFieldColors
+import com.zerospin.app.ui.hud.HudTextField
 import com.zerospin.app.ui.hud.hudPanel
 import com.zerospin.app.ui.theme.Cyan
 import com.zerospin.app.ui.theme.Muted
@@ -67,6 +64,7 @@ fun NotesScreen(
                     editing = Note(id = nextId(notes.map { it.id }), title = "", body = "", updated = nowMillis())
                 },
                 modifier = Modifier.fillMaxWidth(),
+                primary = true,
             )
         }
         if (notes.isEmpty()) {
@@ -110,6 +108,7 @@ private fun NoteEditor(
 ) {
     var title by rememberSaveable(note.id) { mutableStateOf(note.title) }
     var body by rememberSaveable(note.id) { mutableStateOf(note.body) }
+    val canSave = title.isNotBlank() || body.isNotBlank()
 
     Column(
         Modifier
@@ -117,38 +116,39 @@ private fun NoteEditor(
             .verticalScroll(rememberScrollState())
             .padding(14.dp),
     ) {
-        OutlinedTextField(
+        HudTextField(
             value = title,
             onValueChange = { title = it },
-            placeholder = { Text("Название", color = Muted) },
-            singleLine = true,
+            label = "Название",
+            placeholder = "О чём заметка",
+            maxLength = 60,
             modifier = Modifier.fillMaxWidth(),
-            colors = hudFieldColors(),
-            shape = RoundedCornerShape(6.dp),
         )
-        Spacer(Modifier.height(10.dp))
-        OutlinedTextField(
+        Spacer(Modifier.height(14.dp))
+        HudTextField(
             value = body,
             onValueChange = { body = it },
-            placeholder = { Text("Текст заметки…", color = Muted) },
+            label = "Текст",
+            placeholder = "Пишите здесь…",
+            singleLine = false,
             minLines = 8,
+            maxLength = 5000,
             modifier = Modifier.fillMaxWidth(),
-            colors = hudFieldColors(),
-            shape = RoundedCornerShape(6.dp),
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(18.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             HudButton(text = "Назад", onClick = onCancel, modifier = Modifier.weight(1f))
             HudButton(
                 text = "Сохранить",
                 onClick = {
-                    if (title.isNotBlank() || body.isNotBlank()) {
+                    if (canSave) {
                         onSave(note.copy(title = title.trim(), body = body.trim(), updated = nowMillis()))
                     } else {
                         onCancel()
                     }
                 },
                 modifier = Modifier.weight(1f),
+                primary = true,
             )
         }
         if (isExisting) {
