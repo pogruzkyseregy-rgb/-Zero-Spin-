@@ -315,7 +315,9 @@ private fun PhotoCarousel(photos: List<Attachment>) {
                 Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        val off = pager.getOffsetFractionForPage(page).absoluteValue.coerceAtMost(1f)
+                        // Насколько страница ушла от центра: 0 — в центре, 1 — на полстраницы и дальше
+                        val position = pager.currentPage + pager.currentPageOffsetFraction
+                        val off = (page - position).absoluteValue.coerceAtMost(1f)
                         scaleX = 1f - 0.12f * off
                         scaleY = 1f - 0.12f * off
                         alpha = 1f - 0.5f * off
