@@ -9,7 +9,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,14 +28,25 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zerospin.app.data.AttachKind
@@ -148,31 +164,105 @@ fun AttachmentList(items: List<Attachment>, onRemove: ((Int) -> Unit)? = null) {
     }
 }
 
+/**
+ * Фото в ленте и чатах. Без срезанной панели: картинка сидит в прямоугольной рамке
+ * с естественными пропорциями (в пределах разумного), поэтому ничего не налезает на углы.
+ */
 @Composable
 private fun PhotoTile(item: Attachment, onRemove: (() -> Unit)?) {
-    val bitmap = rememberThumb(item.uri)
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(180.dp)
-            .hudPanel(cut = 10.dp, fill = Bg),
-    ) {
-        if (bitmap != null) {
-            Image(
-                bitmap = bitmap,
-                contentDescription = item.name,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().padding(3.dp),
-            )
-        } else {
-            Text("ФОТО · ЗАГРУЗКА…", color = Muted, fontSize = 10.sp, modifier = Modifier.padding(12.dp))
+    val preview = rememberThumb(item.uri, 900)
+    var open by remember { mutableStateOf(false) }
+    val ratio = preview?.let { (it.width.toFloat() / it.height).coerceIn(0.75f, 1.9f) } ?: 1.33f
+
+    Box(Modifier.fillMaxWidth()) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(ratio)
+                .background(Bg)
+                .border(1.dp, Muted.copy(alpha = 0.5f), RectangleShape)
+                .clickable(enabled = preview != null) { open = true },
+            contentAlignment = Alignment.Center,
+        ) {
+            if (preview != null) {
+                Image(
+                    bitmap = preview,
+                    contentDescription = item.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Text("ФОТО · ЗАГРУЗКА…", color = Muted, fontSize = 10.sp)
+            }
         }
         if (onRemove != null) {
             Text(
                 "×",
                 color = Red,
                 fontSize = 20.sp,
-                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).clickable { onRemove() },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .background(Bg.copy(alpha = 0.7f))
+                    .clickable { onRemove() }
+                    .padding(horizontal = 6.dp),
+            )
+        }
+    }
+    if (open) PhotoViewer(item, onDismiss = { open = false })
+}
+
+/** Полноэкранный просмотр: фото во весь экран, двойной тап и щипок для увеличения, ✕ закрывает. */
+@Composable
+private fun PhotoViewer(item: Attachment, onDismiss: () -> Unit) {
+    val full = rememberThumb(item.uri, 2048)
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .pointerInput(Unit) {
+                    detectTapGestures(onDoubleTap = {
+                        scale = if (scale > 1f) 1f else 2.5f
+                        offset = Offset.Zero
+                    })
+                }
+                .pointerInput(Unit) {
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        scale = (scale * zoom).coerceIn(1f, 5f)
+                        offset = if (scale > 1f) offset + pan else Offset.Zero
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            if (full != null) {
+                Image(
+                    bitmap = full,
+                    contentDescription = item.name,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer(scaleX = scale, scaleY = scale, translationX = offset.x, translationY = offset.y),
+                )
+            } else {
+                Text("ЗАГРУЗКА…", color = Muted, fontSize = 10.sp)
+            }
+            Text(
+                "✕",
+                color = TextMain,
+                fontSize = 22.sp,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+                    .background(Bg.copy(alpha = 0.7f))
+                    .clickable(onClick = onDismiss)
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
             )
         }
     }

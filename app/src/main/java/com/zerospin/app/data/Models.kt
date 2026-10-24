@@ -94,6 +94,8 @@ data class Profile(
     val status: String,
     val bio: String,
     val birthday: String,
+    /** Фото профиля (content:// uri) или null */
+    val avatarUri: String? = null,
 )
 
 data class AppSettings(

@@ -49,7 +49,7 @@ class AppStore(context: Context) {
         val root = JSONObject()
         root.put("profile", JSONObject()
             .put("name", p.name).put("nick", p.nick).put("status", p.status)
-            .put("bio", p.bio).put("birthday", p.birthday))
+            .put("bio", p.bio).put("birthday", p.birthday).put("avatar", p.avatarUri ?: ""))
         root.put("settings", JSONObject()
             .put("notifications", s.notifications).put("sounds", s.sounds).put("vibration", s.vibration)
             .put("showOnline", s.showOnline).put("readReceipts", s.readReceipts)
@@ -121,6 +121,7 @@ class AppStore(context: Context) {
                 status = o.optString("status", ""),
                 bio = o.optString("bio", ""),
                 birthday = o.optString("birthday", ""),
+                avatarUri = o.optString("avatar", "").ifBlank { null },
             )
         }
         root.optJSONObject("settings")?.let { o ->
