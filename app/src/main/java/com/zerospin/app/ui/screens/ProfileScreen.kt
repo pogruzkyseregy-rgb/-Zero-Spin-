@@ -1,19 +1,9 @@
 package com.zerospin.app.ui.screens
 
 import android.widget.Toast
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -23,8 +13,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.zerospin.app.ui.components.Avatar
-import com.zerospin.app.ui.theme.CardBg
+import com.zerospin.app.ui.hud.HudButton
+import com.zerospin.app.ui.hud.SegmentedBar
+import com.zerospin.app.ui.hud.TargetRing
+import com.zerospin.app.ui.hud.hudPanel
 import com.zerospin.app.ui.theme.Cyan
 import com.zerospin.app.ui.theme.Muted
 import com.zerospin.app.ui.theme.TextMain
@@ -34,50 +26,49 @@ fun ProfileScreen(postCount: Int, chatCount: Int) {
     val context = LocalContext.current
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(20.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Avatar(name = "Адонис", accent = Cyan, size = 96.dp)
-        Spacer(Modifier.height(12.dp))
-        Text("Адонис", color = TextMain, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text("@adonis", color = Cyan)
-        Spacer(Modifier.height(12.dp))
+        TargetRing(Modifier.size(120.dp)) {
+            Text("А", color = Cyan, fontSize = 44.sp, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(16.dp))
+        Text("АДОНИС", color = Cyan, fontWeight = FontWeight.Bold, fontSize = 20.sp, letterSpacing = 3.sp)
+        Text("@adonis", color = Muted, fontSize = 12.sp)
+        Spacer(Modifier.height(8.dp))
         Text(
-            text = "Пока без описания.",
-            color = Muted,
+            text = "Пока без описания",
+            color = TextMain.copy(alpha = 0.7f),
+            fontSize = 13.sp,
             textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(24.dp))
 
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            color = CardBg,
-            border = BorderStroke(1.dp, Cyan.copy(alpha = 0.4f)),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-            ) {
-                StatItem(value = postCount.toString(), label = "постов")
-                StatItem(value = chatCount.toString(), label = "чатов")
-            }
-        }
+        StatBlock(label = "ЗАПИСЕЙ", value = postCount, goal = 10)
+        Spacer(Modifier.height(12.dp))
+        StatBlock(label = "КАНАЛОВ", value = chatCount, goal = 5)
+        Spacer(Modifier.height(24.dp))
 
-        Spacer(Modifier.height(20.dp))
-        OutlinedButton(
+        HudButton(
+            text = "Редактировать",
             onClick = { Toast.makeText(context, "Скоро", Toast.LENGTH_SHORT).show() },
             modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Редактировать")
-        }
+        )
     }
 }
 
 @Composable
-private fun StatItem(value: String, label: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, color = Cyan, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text(label, color = Muted, style = MaterialTheme.typography.bodySmall)
+private fun StatBlock(label: String, value: Int, goal: Int) {
+    Column(Modifier.fillMaxWidth().hudPanel(cut = 12.dp).padding(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, color = Muted, fontSize = 11.sp, letterSpacing = 1.5.sp)
+            Spacer(Modifier.weight(1f))
+            Text(value.toString(), color = Cyan, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        }
+        Spacer(Modifier.height(10.dp))
+        SegmentedBar(progress = value.toFloat() / goal)
     }
 }

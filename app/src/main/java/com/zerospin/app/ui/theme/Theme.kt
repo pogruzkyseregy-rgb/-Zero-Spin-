@@ -3,31 +3,28 @@ package com.zerospin.app.ui.theme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
-// Палитра в стиле Авроры: тёмно-синий фон, неоновый циан, фиолетовый и розовый акценты
-val Bg = Color(0xFF0B1126)
-val CardBg = Color(0xFF141E3C)
-val Cyan = Color(0xFF33E1F5)
-val Violet = Color(0xFF8B6CFF)
-val Pink = Color(0xFFFF5DA2)
-val Muted = Color(0xFF7F8BB0)
-val TextMain = Color(0xFFE6EEFF)
-
-/** Градиентная линия под шапкой и над нижней панелью */
-val AuroraBrush = Brush.horizontalGradient(listOf(Cyan, Violet, Pink))
+// Палитра HUD-интерфейса Авроры: глубокий чёрно-синий фон, холодный циан, фиолетовый и красный для сигналов
+val Bg = Color(0xFF05080F)
+val Panel = Color(0xFF0A1322)
+val CardBg = Panel
+val Cyan = Color(0xFF22E6FF)
+val Violet = Color(0xFFA855FF)
+val Red = Color(0xFFFF3B5C)
+val Muted = Color(0xFF5E7C8C)
+val TextMain = Color(0xFFD9F6FF)
 
 private val ZeroSpinScheme = darkColorScheme(
     primary = Cyan,
     onPrimary = Bg,
     secondary = Violet,
-    tertiary = Pink,
+    error = Red,
     background = Bg,
     onBackground = TextMain,
-    surface = CardBg,
+    surface = Panel,
     onSurface = TextMain,
-    surfaceVariant = CardBg,
+    surfaceVariant = Panel,
     onSurfaceVariant = Muted,
 )
 
