@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import java.io.File
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -68,26 +69,41 @@ import com.zerospin.app.ui.theme.Violet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Выбор фото и видео (системный Photo Picker, с откатом на обычный выбор на старых телефонах). */
+/**
+ * Выбор фото и видео (системный Photo Picker).
+ * Фото копируются во внутреннюю память приложения, чтобы не пропадали после перезапуска.
+ */
 @Composable
 fun rememberPhotoPicker(maxItems: Int = 10, onPicked: (List<Attachment>) -> Unit): () -> Unit {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(maxItems),
     ) { uris ->
-        if (uris.isNotEmpty()) onPicked(uris.map { toAttachment(context, it) })
+        if (uris.isNotEmpty()) {
+            scope.launch {
+                val list = withContext(Dispatchers.IO) { uris.map { storedAttachment(context, it) } }
+                onPicked(list)
+            }
+        }
     }
     return {
         launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
     }
 }
 
-/** Одно фото для фона опроса. */
+/** Одно фото (обложка, аватар, история). Тоже сохраняется в память приложения. */
 @Composable
 fun rememberCoverPicker(onPicked: (Attachment) -> Unit): () -> Unit {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) onPicked(toAttachment(context, uri))
+        if (uri != null) {
+            scope.launch {
+                val item = withContext(Dispatchers.IO) { storedAttachment(context, uri) }
+                onPicked(item)
+            }
+        }
     }
     return {
         launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -110,6 +126,34 @@ fun rememberFilePicker(onPicked: (List<Attachment>) -> Unit): () -> Unit {
         }
     }
     return { launcher.launch(arrayOf("*/*")) }
+}
+
+/**
+ * Вложение из галереи: право на чтение на будущее, а фото — копия в папке приложения.
+ * Если скопировать не вышло, остаётся исходная ссылка.
+ */
+private fun storedAttachment(context: Context, uri: Uri): Attachment {
+    runCatching {
+        context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    val base = toAttachment(context, uri)
+    if (base.kind != AttachKind.IMAGE) return base
+    val copied = runCatching {
+        val dir = File(context.filesDir, "media").apply { mkdirs() }
+        val ext = when (base.mime) {
+            "image/png" -> "png"
+            "image/webp" -> "webp"
+            "image/gif" -> "gif"
+            else -> "jpg"
+        }
+        val file = File(dir, "img_${System.currentTimeMillis()}_${(1000..9999).random()}.$ext")
+        val ok = context.contentResolver.openInputStream(uri)?.use { input ->
+            file.outputStream().use { input.copyTo(it) }
+            true
+        } ?: false
+        if (ok) Uri.fromFile(file).toString() else null
+    }.getOrNull()
+    return if (copied != null) base.copy(uri = copied) else base
 }
 
 private fun toAttachment(context: Context, uri: Uri, forceFile: Boolean = false): Attachment {

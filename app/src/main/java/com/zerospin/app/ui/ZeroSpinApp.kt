@@ -27,7 +27,9 @@ import com.zerospin.app.data.Poll
 import com.zerospin.app.data.Post
 import android.widget.Toast
 import androidx.compose.runtime.rememberCoroutineScope
+import com.zerospin.app.data.Comment
 import com.zerospin.app.data.SAVED_CHAT_ID
+import com.zerospin.app.data.Story
 import com.zerospin.app.data.STORY_LIFETIME_MS
 import com.zerospin.app.data.SUPPORT_CHAT_ID
 import com.zerospin.app.data.auroraReply
@@ -153,6 +155,11 @@ fun ZeroSpinApp() {
                 ),
             )
         }
+    }
+
+    fun updatePost(id: Int, change: (Post) -> Post) {
+        val i = store.posts.indexOfFirst { it.id == id }
+        if (i >= 0) store.posts[i] = change(store.posts[i])
     }
 
     fun updateMessage(chatId: Int, id: Int, change: (ChatMessage) -> ChatMessage) {
@@ -296,7 +303,34 @@ fun ZeroSpinApp() {
                 when (tab) {
                     0 -> FeedScreen(
                         posts = store.posts,
+                        stories = store.stories,
                         currentAuthor = myName,
+                        onComment = { postId, text ->
+                            updatePost(postId) { p ->
+                                p.copy(comments = p.comments + Comment(nextId(p.comments.map { it.id }), myName, text, nowTime()))
+                            }
+                        },
+                        onDeleteComment = { postId, commentId ->
+                            updatePost(postId) { p -> p.copy(comments = p.comments.filter { it.id != commentId }) }
+                        },
+                        onBookmark = { id -> updatePost(id) { it.copy(bookmarked = !it.bookmarked) } },
+                        onAddStory = { uri, caption ->
+                            store.stories.add(
+                                0,
+                                Story(
+                                    id = nextId(store.stories.map { it.id }),
+                                    author = myName,
+                                    uri = uri,
+                                    caption = caption,
+                                    createdAt = nowMillis(),
+                                ),
+                            )
+                        },
+                        onStorySeen = { id ->
+                            val i = store.stories.indexOfFirst { it.id == id }
+                            if (i >= 0 && !store.stories[i].seen) store.stories[i] = store.stories[i].copy(seen = true)
+                        },
+                        onDeleteStory = { id -> store.stories.removeAll { it.id == id } },
                         onPublish = { text, attachments ->
                             store.posts.add(
                                 0,
