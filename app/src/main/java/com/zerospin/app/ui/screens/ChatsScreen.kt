@@ -1,6 +1,22 @@
 package com.zerospin.app.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.ime
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.core.content.ContextCompat
+import com.zerospin.app.data.AttachKind
+import com.zerospin.app.ui.components.VoiceRecorder
+import com.zerospin.app.ui.components.formatDuration
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -440,7 +456,9 @@ private fun ChatRow(chat: Chat, last: ChatMessage?, typing: Boolean, onClick: ()
 
 private fun previewOf(last: ChatMessage?): String {
     if (last == null) return "ожидание сигнала…"
-    val body = plainText(last.text).ifBlank { "вложение" }
+    val body = plainText(last.text).ifBlank {
+        if (last.attachments.any { it.kind == AttachKind.AUDIO }) "🎙 голосовое" else "вложение"
+    }
     val prefix = if (last.forwardedFrom != null) "↪ " else ""
     return prefix + if (last.fromMe) "Вы: $body" else body
 }
@@ -496,10 +514,43 @@ private fun Conversation(
 
     val rows = remember(messages) { buildRows(messages) }
 
-    // Черновик сохраняется при выходе из чата (если не в режиме правки)
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+    fun buzz() {
+        if (settings.vibration) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+    }
+
+    // Голосовые: запись, таймер и уровень звука
+    val recorder = remember(chat.id) { VoiceRecorder(context) }
+    var recording by remember(chat.id) { mutableStateOf(false) }
+    var recElapsed by remember(chat.id) { mutableLongStateOf(0L) }
+    var recLevel by remember(chat.id) { mutableFloatStateOf(0f) }
+    fun startRecording() {
+        if (recorder.start()) {
+            recording = true
+            buzz()
+        } else {
+            Toast.makeText(context, "Микрофон недоступен", Toast.LENGTH_SHORT).show()
+        }
+    }
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) startRecording() else Toast.makeText(context, "Нужен доступ к микрофону", Toast.LENGTH_SHORT).show()
+    }
+    LaunchedEffect(recording) {
+        while (recording) {
+            recElapsed = recorder.elapsed()
+            recLevel = recorder.level()
+            delay(120)
+        }
+    }
+
+    // Черновик сохраняется при выходе из чата (если не в режиме правки), незаконченная запись отменяется
     val latestDraft = rememberUpdatedState(if (editing == null) draft else "")
     DisposableEffect(chat.id) {
-        onDispose { onDraft(latestDraft.value) }
+        onDispose {
+            onDraft(latestDraft.value)
+            recorder.cancel()
+        }
     }
 
     fun jumpTo(id: Int) {
@@ -539,6 +590,12 @@ private fun Conversation(
             val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
             info.totalItemsCount == 0 || lastVisible >= info.totalItemsCount - 2
         }
+    }
+
+    // Открылась клавиатура — показываем последние сообщения над ней
+    val imeOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    LaunchedEffect(imeOpen) {
+        if (imeOpen && rows.isNotEmpty()) listState.scrollToItem(rows.size - 1)
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
@@ -700,10 +757,18 @@ private fun Conversation(
                                 highlight = if (searching) q else "",
                                 flash = flashId == r.message.id,
                                 pinned = chat.pinnedMessageId == r.message.id,
-                                onLongClick = { actionFor = r.message },
+                                onLongClick = {
+                                    buzz()
+                                    actionFor = r.message
+                                },
                                 onReactionClick = { onReact(r.message.id, it) },
+                                onDoubleTap = {
+                                    buzz()
+                                    onReact(r.message.id, "❤️")
+                                },
                                 onQuoteClick = { id -> jumpTo(id) },
                                 onSwipeReply = {
+                                    buzz()
                                     replyTo = r.message
                                     editing = null
                                 },
@@ -779,7 +844,31 @@ private fun Conversation(
             }
         }
 
-        Row(
+        // Быстрые вопросы Авроре
+        if (chat.id == SUPPORT_CHAT_ID && draft.isEmpty() && !recording) {
+            SuggestionChips(onPick = { onSend(it, emptyList(), null) })
+        }
+
+        if (recording) {
+            RecordingBar(
+                elapsed = recElapsed,
+                level = recLevel,
+                onCancel = {
+                    recorder.cancel()
+                    recording = false
+                },
+                onSend = {
+                    val voice = recorder.stop()
+                    recording = false
+                    if (voice != null) {
+                        onSend("", listOf(voice), replyTo?.id)
+                        replyTo = null
+                    } else {
+                        Toast.makeText(context, "Слишком короткая запись", Toast.LENGTH_SHORT).show()
+                    }
+                },
+            )
+        } else Row(
             Modifier.fillMaxWidth().padding(vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -819,6 +908,13 @@ private fun Conversation(
                     .size(44.dp)
                     .hudPanel(line = Cyan, cut = 10.dp, glow = true, brush = Brush.linearGradient(listOf(Violet, Cyan, Mint)))
                     .clickable {
+                        // Пустое поле — кнопка записывает голосовое
+                        if (draft.isBlank() && pending.isEmpty() && editing == null) {
+                            val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                                PackageManager.PERMISSION_GRANTED
+                            if (granted) startRecording() else micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                            return@clickable
+                        }
                         val text = draft.trim()
                         val edit = editing
                         if (edit != null) {
@@ -836,7 +932,11 @@ private fun Conversation(
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                HudIcon(HudIconKind.SEND, Bg, Modifier.size(18.dp))
+                if (draft.isBlank() && pending.isEmpty() && editing == null) {
+                    Text("🎙", fontSize = 18.sp)
+                } else {
+                    HudIcon(HudIconKind.SEND, Bg, Modifier.size(18.dp))
+                }
             }
         }
     }
@@ -911,6 +1011,74 @@ private fun Conversation(
     }
 }
 
+/** Вопросы-подсказки в чате Авроры: одно нажатие отправляет вопрос. */
+private val AuroraQuestions = listOf(
+    "Как переслать?", "Что в архиве?", "Разметка текста", "Истории", "Исчезающие", "PIN-код", "Поиск в чате",
+)
+
+@Composable
+private fun SuggestionChips(onPick: (String) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        AuroraQuestions.forEach { q ->
+            Text(
+                q,
+                color = Violet,
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .hudPanel(line = Violet, fill = Panel, cut = 6.dp)
+                    .clickable { onPick(q) }
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
+            )
+        }
+    }
+}
+
+/** Полоса записи голосового: пульс, таймер, живой уровень звука, отмена и отправка. */
+@Composable
+private fun RecordingBar(elapsed: Long, level: Float, onCancel: () -> Unit, onSend: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp)
+            .hudPanel(line = Red, fill = Panel, cut = 10.dp, glow = true)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PulseDot(Red, Modifier.size(12.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(formatDuration(elapsed), color = TextMain, fontSize = 14.sp, fontFamily = HudMono)
+        Spacer(Modifier.width(10.dp))
+        Box(Modifier.weight(1f).height(6.dp).background(Muted.copy(alpha = 0.3f))) {
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(level.coerceIn(0.05f, 1f))
+                    .background(Brush.horizontalGradient(listOf(Violet, Cyan, Mint))),
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            "ОТМЕНА",
+            color = Muted,
+            fontSize = 11.sp,
+            letterSpacing = 1.sp,
+            modifier = Modifier.clickable(onClick = onCancel).padding(6.dp),
+        )
+        Box(
+            Modifier
+                .size(40.dp)
+                .hudPanel(line = Cyan, cut = 9.dp, glow = true, brush = Brush.linearGradient(listOf(Violet, Cyan, Mint)))
+                .clickable(onClick = onSend),
+            contentAlignment = Alignment.Center,
+        ) {
+            HudIcon(HudIconKind.SEND, Bg, Modifier.size(16.dp))
+        }
+    }
+}
+
 private fun buildRows(messages: List<ChatMessage>): List<ListRow> {
     val out = mutableListOf<ListRow>()
     var lastDay = ""
@@ -962,6 +1130,7 @@ private fun Bubble(
     pinned: Boolean,
     onLongClick: () -> Unit,
     onReactionClick: (String) -> Unit,
+    onDoubleTap: () -> Unit,
     onQuoteClick: (Int) -> Unit,
     onSwipeReply: () -> Unit,
 ) {
@@ -1012,7 +1181,7 @@ private fun Bubble(
                         glow = flash,
                         brush = if (mine) Brush.linearGradient(listOf(Color(0xFF0A2733), Color(0xFF1B1140))) else null,
                     )
-                    .combinedClickable(onClick = {}, onLongClick = onLongClick)
+                    .combinedClickable(onClick = {}, onDoubleClick = onDoubleTap, onLongClick = onLongClick)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
                 if (message.forwardedFrom != null) {

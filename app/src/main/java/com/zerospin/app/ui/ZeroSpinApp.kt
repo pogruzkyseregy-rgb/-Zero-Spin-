@@ -2,6 +2,9 @@ package com.zerospin.app.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
@@ -70,6 +73,7 @@ private const val NO_SECTION = ""
 private const val NO_CHAT = -1
 private const val APP_VERSION = "v0.2 · Квант"
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ZeroSpinApp() {
     val context = LocalContext.current
@@ -324,15 +328,26 @@ fun ZeroSpinApp() {
                 )
             },
             bottomBar = {
-                HudTabBar(
-                    tabs = tabs,
-                    selected = tab,
-                    onSelect = { selectTab(it) },
-                    badges = listOf(0, unreadTotal, 0, 0),
-                )
+                // В открытом чате нижняя панель прячется: больше места для переписки и клавиатуры
+                if (!(tab == 1 && openChat >= 0)) {
+                    HudTabBar(
+                        tabs = tabs,
+                        selected = tab,
+                        onSelect = { selectTab(it) },
+                        badges = listOf(0, unreadTotal, 0, 0),
+                    )
+                }
             },
         ) { padding ->
-            Box(Modifier.padding(padding).fillMaxSize()) {
+            // Отступ под клавиатуру: экран сжимается над ней, поле ввода остаётся видно.
+            // consumeWindowInsets не даёт посчитать нижнюю панель дважды.
+            Box(
+                Modifier
+                    .padding(padding)
+                    .consumeWindowInsets(padding)
+                    .imePadding()
+                    .fillMaxSize(),
+            ) {
                 when (tab) {
                     0 -> FeedScreen(
                         posts = store.posts,

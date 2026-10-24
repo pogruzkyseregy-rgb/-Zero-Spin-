@@ -23,7 +23,7 @@ fun ttlLabel(seconds: Int): String = TtlOptions.firstOrNull { it.first == second
 /** Реакции, которые можно поставить на сообщение. */
 val QuickReactions = listOf("❤️", "🔥", "😂", "👍", "😮", "😢")
 
-enum class AttachKind { IMAGE, VIDEO, FILE }
+enum class AttachKind { IMAGE, VIDEO, FILE, AUDIO }
 
 /** Вложение: ссылка на файл на телефоне (content:// uri), сам файл не копируется. */
 data class Attachment(

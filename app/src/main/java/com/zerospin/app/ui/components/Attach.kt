@@ -209,6 +209,7 @@ fun AttachmentList(items: List<Attachment>, onRemove: ((Int) -> Unit)? = null) {
             val remove: (() -> Unit)? = if (onRemove == null) null else ({ onRemove(index) })
             when (item.kind) {
                 AttachKind.IMAGE -> PhotoTile(item, remove)
+                AttachKind.AUDIO -> VoiceRow(item, remove)
                 else -> FileRow(item, remove)
             }
         }
