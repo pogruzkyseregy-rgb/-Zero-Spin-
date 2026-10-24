@@ -25,11 +25,16 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,6 +54,8 @@ import com.zerospin.app.data.Attachment
 import com.zerospin.app.data.BlockKind
 import com.zerospin.app.data.Profile
 import com.zerospin.app.data.ProfileBlock
+import com.zerospin.app.ui.components.PhotoViewer
+import com.zerospin.app.ui.components.imageAttachment
 import com.zerospin.app.ui.components.rememberCoverPicker
 import com.zerospin.app.ui.components.rememberThumb
 import com.zerospin.app.ui.hud.HudButton
@@ -85,6 +92,9 @@ fun ProfileScreen(
     var birthday by rememberSaveable { mutableStateOf("") }
     var bio by rememberSaveable { mutableStateOf("") }
 
+    // Фото, открытое на весь экран (любое фото профиля)
+    var viewing by remember { mutableStateOf<Attachment?>(null) }
+
     fun startEdit() {
         name = profile.name
         nick = profile.nick
@@ -117,6 +127,9 @@ fun ProfileScreen(
         birthday.trim() != profile.birthday
     val canSave = nameError == null && nickError == null && birthdayError == null && dirty
 
+    // Просмотр фото поверх экрана
+    viewing?.let { PhotoViewer(item = it, onDismiss = { viewing = null }) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -124,7 +137,34 @@ fun ProfileScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (!editing) {
-            ProfileHeader(profile = profile, onPick = { pickAvatar() })
+            // Правка и конструктор спрятаны в иконки, чтобы не мешали
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                Icon(
+                    Icons.Filled.Edit,
+                    contentDescription = "Изменить профиль",
+                    tint = Muted,
+                    modifier = Modifier.size(22.dp).clickable { startEdit() },
+                )
+                Spacer(Modifier.width(18.dp))
+                Icon(
+                    Icons.Filled.Tune,
+                    contentDescription = "Конструктор",
+                    tint = Muted,
+                    modifier = Modifier.size(22.dp).clickable(onClick = onOpenBuilder),
+                )
+            }
+
+            ProfileHeader(
+                profile = profile,
+                onAvatarTap = {
+                    val uri = profile.avatarUri
+                    if (uri != null) viewing = imageAttachment(uri, "аватар") else pickAvatar()
+                },
+                onCoverTap = { uri -> viewing = imageAttachment(uri, "обложка") },
+            )
 
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
@@ -146,18 +186,11 @@ fun ProfileScreen(
 
                 // Блоки в порядке, который задан в конструкторе; обложка уже в шапке
                 profile.blocks.filter { it.kind != BlockKind.COVER }.forEach { block ->
-                    BlockView(block, profile, postCount, chatCount)
+                    BlockView(block, profile, postCount, chatCount, onOpen = { viewing = it })
                     Spacer(Modifier.height(10.dp))
                 }
                 if (profile.blocks.isEmpty()) {
                     Text("Профиль пуст. Добавьте блоки в конструкторе", color = Muted, fontSize = 12.sp)
-                    Spacer(Modifier.height(10.dp))
-                }
-
-                Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    HudButton(text = "Изменить", onClick = { startEdit() }, modifier = Modifier.weight(1f), primary = true)
-                    HudButton(text = "Конструктор", onClick = onOpenBuilder, modifier = Modifier.weight(1f))
                 }
             }
         } else {
@@ -224,15 +257,25 @@ fun ProfileScreen(
                         letterSpacing = 1.sp,
                     )
                     Spacer(Modifier.height(12.dp))
-                    if (profile.avatarUri != null) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
-                            "УБРАТЬ ФОТО ПРОФИЛЯ",
-                            color = Red,
+                            if (profile.avatarUri == null) "ДОБАВИТЬ ФОТО" else "СМЕНИТЬ ФОТО",
+                            color = Cyan,
                             fontSize = 10.sp,
                             letterSpacing = 1.sp,
-                            modifier = Modifier.clickable { onAvatar(null) }.padding(bottom = 10.dp),
+                            modifier = Modifier.clickable { pickAvatar() }.padding(vertical = 8.dp),
                         )
+                        if (profile.avatarUri != null) {
+                            Text(
+                                "УБРАТЬ ФОТО",
+                                color = Red,
+                                fontSize = 10.sp,
+                                letterSpacing = 1.sp,
+                                modifier = Modifier.clickable { onAvatar(null) }.padding(vertical = 8.dp),
+                            )
+                        }
                     }
+                    Spacer(Modifier.height(12.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         HudButton(text = "Отмена", onClick = { editing = false }, modifier = Modifier.weight(1f))
                         HudButton(
@@ -263,19 +306,23 @@ fun ProfileScreen(
 
 /**
  * Шапка: обложка на всю ширину как фон, аватар поверх её нижнего края.
- * Без обложки аватар просто стоит сверху.
+ * Нажатие на обложку и аватар открывает фото на весь экран.
  */
 @Composable
-private fun ProfileHeader(profile: Profile, onPick: () -> Unit) {
+private fun ProfileHeader(
+    profile: Profile,
+    onAvatarTap: () -> Unit,
+    onCoverTap: (String) -> Unit,
+) {
     val coverUri = profile.coverUri.takeIf { uri -> uri != null && profile.blocks.any { it.kind == BlockKind.COVER } }
     val cover = coverUri?.let { rememberThumb(it, 1080) }
-    if (cover != null) {
+    if (cover != null && coverUri != null) {
         Box(Modifier.fillMaxWidth().height(200.dp)) {
             Image(
                 bitmap = cover,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().clickable { onCoverTap(coverUri) },
             )
             // Мягкий переход к фону приложения, чтобы обложка не резала экран
             Box(
@@ -285,21 +332,27 @@ private fun ProfileHeader(profile: Profile, onPick: () -> Unit) {
             )
             Avatar(
                 profile = profile,
-                onPick = onPick,
+                onPick = onAvatarTap,
                 modifier = Modifier.align(Alignment.BottomCenter).offset(y = 52.dp),
             )
         }
         Spacer(Modifier.height(60.dp))
     } else {
         Spacer(Modifier.height(16.dp))
-        Avatar(profile = profile, onPick = onPick)
+        Avatar(profile = profile, onPick = onAvatarTap)
         Spacer(Modifier.height(12.dp))
     }
 }
 
 /** Один блок профиля. Пустые блоки с текстом не показываются, чтобы не было пустых рамок. */
 @Composable
-private fun BlockView(block: ProfileBlock, profile: Profile, postCount: Int, chatCount: Int) {
+private fun BlockView(
+    block: ProfileBlock,
+    profile: Profile,
+    postCount: Int,
+    chatCount: Int,
+    onOpen: (Attachment) -> Unit,
+) {
     when (block.kind) {
         BlockKind.ABOUT -> TextPanel(
             profile.bio.ifBlank { "Пока без описания" },
@@ -311,18 +364,18 @@ private fun BlockView(block: ProfileBlock, profile: Profile, postCount: Int, cha
         BlockKind.LINK -> if (block.text.isNotBlank()) InfoRow("ССЫЛКА", block.text)
         // Обложка показана в шапке, здесь ничего не выводим
         BlockKind.COVER -> Unit
-        BlockKind.PHOTOS -> if (profile.photos.isNotEmpty()) PhotoCarousel(profile.photos)
+        BlockKind.PHOTOS -> if (profile.photos.isNotEmpty()) PhotoCarousel(profile.photos, onOpen)
         BlockKind.FRIENDS -> if (profile.friends.isNotEmpty()) FriendsPanel(profile.friends)
     }
 }
 
 /**
  * Карусель фото по кругу. Листается сама каждые несколько секунд,
- * пауза, пока палец на экране или идёт прокрутка. Соседние фото уменьшаются и бледнеют.
+ * пауза, пока палец на экране или идёт прокрутка. Нажатие открывает фото на весь экран.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PhotoCarousel(photos: List<Attachment>) {
+private fun PhotoCarousel(photos: List<Attachment>, onOpen: (Attachment) -> Unit) {
     val count = photos.size
     // Начинаем из середины огромного диапазона, чтобы можно было листать в обе стороны
     val start = Int.MAX_VALUE / 2 - (Int.MAX_VALUE / 2) % count
@@ -346,7 +399,8 @@ private fun PhotoCarousel(photos: List<Attachment>) {
             contentPadding = PaddingValues(horizontal = 44.dp),
             pageSpacing = 12.dp,
         ) { page ->
-            val thumb = rememberThumb(photos[page % count].uri, 900)
+            val photo = photos[page % count]
+            val thumb = rememberThumb(photo.uri, 900)
             Box(
                 Modifier
                     .fillMaxSize()
@@ -359,7 +413,8 @@ private fun PhotoCarousel(photos: List<Attachment>) {
                         alpha = 1f - 0.5f * off
                     }
                     .hudPanel(cut = 14.dp)
-                    .padding(3.dp),
+                    .padding(3.dp)
+                    .clickable { onOpen(photo) },
             ) {
                 if (thumb != null) {
                     Image(
@@ -454,7 +509,7 @@ private fun InfoRow(label: String, value: String) {
     }
 }
 
-/** Круг с фото или инициалом. Нажатие выбирает новое фото. */
+/** Круг с фото или инициалом. Нажатие передаётся наружу: открыть фото или выбрать новое. */
 @Composable
 private fun Avatar(profile: Profile, onPick: () -> Unit, modifier: Modifier = Modifier) {
     val photo = profile.avatarUri?.let { rememberThumb(it, 512) }

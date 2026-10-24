@@ -246,8 +246,13 @@ private fun saveToGallery(context: Context, item: Attachment): Boolean = runCatc
 }.getOrDefault(false)
 
 /** Полноэкранный просмотр: фото во весь экран, двойной тап и щипок для увеличения, ✕ закрывает. */
+/** Фото изображения по ссылке как вложение: для обложки, аватара и т.п. */
+fun imageAttachment(uri: String, name: String = "фото"): Attachment =
+    Attachment(AttachKind.IMAGE, uri, name, "image/jpeg")
+
+/** Полноэкранный просмотр любого фото: зум, сохранение в галерею, установка на профиль. */
 @Composable
-private fun PhotoViewer(item: Attachment, onDismiss: () -> Unit) {
+fun PhotoViewer(item: Attachment, onDismiss: () -> Unit) {
     val full = rememberThumb(item.uri, 2048)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()

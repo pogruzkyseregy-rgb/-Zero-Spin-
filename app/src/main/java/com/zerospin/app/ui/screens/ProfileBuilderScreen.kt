@@ -42,6 +42,8 @@ import com.zerospin.app.data.BlockKind
 import com.zerospin.app.data.BlockTemplates
 import com.zerospin.app.data.Profile
 import com.zerospin.app.data.ProfileBlock
+import com.zerospin.app.ui.components.PhotoViewer
+import com.zerospin.app.ui.components.imageAttachment
 import com.zerospin.app.ui.components.rememberCoverPicker
 import com.zerospin.app.ui.components.rememberPhotoPicker
 import com.zerospin.app.ui.components.rememberThumb
@@ -69,9 +71,12 @@ fun ProfileBuilderScreen(
 ) {
     val blocks = profile.blocks
     fun setBlocks(list: List<ProfileBlock>) = onProfile(profile.copy(blocks = list))
+    // Фото, открытое на весь экран из карточек блоков
+    var viewing by remember { mutableStateOf<Attachment?>(null) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Bg)) {
+            viewing?.let { PhotoViewer(item = it, onDismiss = { viewing = null }) }
             Column(
                 Modifier
                     .fillMaxSize()
@@ -114,8 +119,12 @@ fun ProfileBuilderScreen(
                         },
                     ) {
                         when (block.kind) {
-                            BlockKind.COVER -> CoverEditor(profile.coverUri) { onProfile(profile.copy(coverUri = it)) }
-                            BlockKind.PHOTOS -> PhotosEditor(profile.photos) { onProfile(profile.copy(photos = it)) }
+                            BlockKind.COVER -> CoverEditor(profile.coverUri, onOpen = { viewing = it }) {
+                                onProfile(profile.copy(coverUri = it))
+                            }
+                            BlockKind.PHOTOS -> PhotosEditor(profile.photos, onOpen = { viewing = it }) {
+                                onProfile(profile.copy(photos = it))
+                            }
                             BlockKind.FRIENDS -> FriendsEditor(profile.friends) { onProfile(profile.copy(friends = it)) }
                             else -> Text(block.kind.hint, color = Muted, fontSize = 11.sp)
                         }
@@ -229,7 +238,7 @@ private fun ActiveBlockCard(
 
 /** Обложка: превью и выбор фото. */
 @Composable
-private fun CoverEditor(coverUri: String?, onChange: (String?) -> Unit) {
+private fun CoverEditor(coverUri: String?, onOpen: (Attachment) -> Unit, onChange: (String?) -> Unit) {
     val pick = rememberCoverPicker { onChange(it.uri) }
     val preview = coverUri?.let { rememberThumb(it, 800) }
     Column(Modifier.fillMaxWidth()) {
@@ -241,7 +250,8 @@ private fun CoverEditor(coverUri: String?, onChange: (String?) -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(110.dp)
-                    .hudPanel(cut = 8.dp),
+                    .hudPanel(cut = 8.dp)
+                    .clickable { coverUri?.let { onOpen(imageAttachment(it, "обложка")) } },
             )
             Spacer(Modifier.height(8.dp))
         }
@@ -261,7 +271,7 @@ private fun CoverEditor(coverUri: String?, onChange: (String?) -> Unit) {
 
 /** Фото для карусели: добавление нескольких и удаление по одному. */
 @Composable
-private fun PhotosEditor(photos: List<Attachment>, onChange: (List<Attachment>) -> Unit) {
+private fun PhotosEditor(photos: List<Attachment>, onOpen: (Attachment) -> Unit, onChange: (List<Attachment>) -> Unit) {
     val pick = rememberPhotoPicker(maxItems = 20) { onChange(photos + it) }
     Column(Modifier.fillMaxWidth()) {
         if (photos.isNotEmpty()) {
@@ -271,7 +281,7 @@ private fun PhotosEditor(photos: List<Attachment>, onChange: (List<Attachment>) 
             ) {
                 photos.forEachIndexed { index, photo ->
                     val thumb = rememberThumb(photo.uri, 200)
-                    Box(Modifier.size(64.dp).hudPanel(cut = 6.dp)) {
+                    Box(Modifier.size(64.dp).hudPanel(cut = 6.dp).clickable { onOpen(photo) }) {
                         if (thumb != null) {
                             Image(
                                 bitmap = thumb,
