@@ -282,6 +282,7 @@ fun ZeroSpinApp() {
                         postCount = store.posts.count { it.author == myName },
                         chatCount = store.chats.count { it.id != SUPPORT_CHAT_ID },
                         onSave = { store.profile.value = it },
+                        onAvatar = { uri -> store.profile.value = store.profile.value.copy(avatarUri = uri) },
                     )
                 }
             }
