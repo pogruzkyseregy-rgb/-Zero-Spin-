@@ -21,24 +21,34 @@ import com.zerospin.app.ui.theme.Cyan
 import com.zerospin.app.ui.theme.Muted
 import com.zerospin.app.ui.theme.Violet
 
+const val SECTION_NOTES = "Заметки"
+const val SECTION_EVENTS = "События"
+const val SECTION_POLLS = "Опросы"
+const val SECTION_COIN = "Zero Spin"
+
+private const val TILE_SUPPORT = "Аврора"
+
 private data class AppTile(
     val title: String,
     val desc: String,
     val icon: HudIconKind,
-    val status: String,
+    val live: Boolean,
 )
 
 private val AppTiles = listOf(
-    AppTile("Zero Spin", "Подброс монетки с виджетом", HudIconKind.RING, "СКОРО"),
-    AppTile("Заметки", "Личные записи", HudIconKind.FEED, "СКОРО"),
-    AppTile("События", "Календарь круга", HudIconKind.APPS, "СКОРО"),
-    AppTile("Опросы", "Голосования в чатах", HudIconKind.CHAT, "СКОРО"),
-    AppTile("Игры", "Мини-игры для круга", HudIconKind.PLUS, "СКОРО"),
-    AppTile("Аврора", "Чат с персонажем", HudIconKind.PROFILE, "СКОРО"),
+    AppTile(SECTION_NOTES, "Личные записи круга", HudIconKind.FEED, true),
+    AppTile(SECTION_EVENTS, "Встречи и даты", HudIconKind.APPS, true),
+    AppTile(SECTION_POLLS, "Голосования в чатах", HudIconKind.CHAT, true),
+    AppTile(TILE_SUPPORT, "Поддержка и подсказки", HudIconKind.PROFILE, true),
+    AppTile(SECTION_COIN, "Подброс монетки AvrorA / Zero Spin", HudIconKind.RING, true),
+    AppTile("Игры", "Мини-игры для круга", HudIconKind.PLUS, false),
 )
 
 @Composable
-fun AppsScreen() {
+fun AppsScreen(
+    onOpen: (String) -> Unit,
+    onOpenSupport: () -> Unit,
+) {
     val context = LocalContext.current
 
     LazyVerticalGrid(
@@ -49,7 +59,11 @@ fun AppsScreen() {
     ) {
         items(AppTiles) { app ->
             AppTileCard(app = app) {
-                Toast.makeText(context, "Скоро: ${app.title}", Toast.LENGTH_SHORT).show()
+                when {
+                    app.title == TILE_SUPPORT -> onOpenSupport()
+                    app.live -> onOpen(app.title)
+                    else -> Toast.makeText(context, "Скоро: ${app.title}", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
@@ -72,7 +86,12 @@ private fun AppTileCard(app: AppTile, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             HudIcon(app.icon, Cyan, Modifier.size(30.dp))
-            Text(app.status, color = Violet, fontSize = 9.sp, letterSpacing = 1.sp)
+            Text(
+                if (app.live) "ОТКРЫТЬ" else "СКОРО",
+                color = if (app.live) Cyan else Violet,
+                fontSize = 9.sp,
+                letterSpacing = 1.sp,
+            )
         }
         Column {
             Text(
