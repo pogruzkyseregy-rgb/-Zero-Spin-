@@ -1,5 +1,6 @@
 package com.zerospin.app.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -23,16 +25,26 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.zerospin.app.data.Attachment
 import com.zerospin.app.data.BlockKind
 import com.zerospin.app.data.BlockTemplates
+import com.zerospin.app.data.Profile
 import com.zerospin.app.data.ProfileBlock
+import com.zerospin.app.ui.components.rememberCoverPicker
+import com.zerospin.app.ui.components.rememberPhotoPicker
+import com.zerospin.app.ui.components.rememberThumb
 import com.zerospin.app.ui.hud.HudButton
 import com.zerospin.app.ui.hud.HudTextField
 import com.zerospin.app.ui.hud.hudPanel
@@ -45,15 +57,19 @@ import com.zerospin.app.ui.theme.TextMain
 import com.zerospin.app.ui.theme.Violet
 
 /**
- * Конструктор профиля: шаблоны, порядок блоков, добавление и удаление.
- * Открывается из настроек и с вкладки профиля, изменения сохраняются сразу.
+ * Конструктор профиля: шаблоны, порядок блоков, добавление и удаление,
+ * а также обложка, фото и друзья прямо в карточках блоков.
+ * Изменения сохраняются сразу.
  */
 @Composable
 fun ProfileBuilderScreen(
-    blocks: List<ProfileBlock>,
-    onChange: (List<ProfileBlock>) -> Unit,
+    profile: Profile,
+    onProfile: (Profile) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val blocks = profile.blocks
+    fun setBlocks(list: List<ProfileBlock>) = onProfile(profile.copy(blocks = list))
+
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Bg)) {
             Column(
@@ -77,7 +93,7 @@ fun ProfileBuilderScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     BlockTemplates.forEach { (name, template) ->
-                        TemplateChip(name = name, active = blocks == template) { onChange(template) }
+                        TemplateChip(name = name, active = blocks == template) { setBlocks(template) }
                     }
                 }
 
@@ -90,13 +106,20 @@ fun ProfileBuilderScreen(
                         block = block,
                         index = index,
                         count = blocks.size,
-                        onUp = { onChange(swap(blocks, index, index - 1)) },
-                        onDown = { onChange(swap(blocks, index, index + 1)) },
-                        onRemove = { onChange(blocks.filterIndexed { i, _ -> i != index }) },
+                        onUp = { setBlocks(swap(blocks, index, index - 1)) },
+                        onDown = { setBlocks(swap(blocks, index, index + 1)) },
+                        onRemove = { setBlocks(blocks.filterIndexed { i, _ -> i != index }) },
                         onText = { text ->
-                            onChange(blocks.mapIndexed { i, b -> if (i == index) b.copy(text = text) else b })
+                            setBlocks(blocks.mapIndexed { i, b -> if (i == index) b.copy(text = text) else b })
                         },
-                    )
+                    ) {
+                        when (block.kind) {
+                            BlockKind.COVER -> CoverEditor(profile.coverUri) { onProfile(profile.copy(coverUri = it)) }
+                            BlockKind.PHOTOS -> PhotosEditor(profile.photos) { onProfile(profile.copy(photos = it)) }
+                            BlockKind.FRIENDS -> FriendsEditor(profile.friends) { onProfile(profile.copy(friends = it)) }
+                            else -> Text(block.kind.hint, color = Muted, fontSize = 11.sp)
+                        }
+                    }
                 }
 
                 val available = BlockKind.values().filter { kind -> blocks.none { it.kind == kind } }
@@ -105,7 +128,7 @@ fun ProfileBuilderScreen(
                     Text("Все блоки уже в профиле", color = Muted, fontSize = 12.sp)
                 }
                 available.forEach { kind ->
-                    LibraryCard(kind = kind) { onChange(blocks + ProfileBlock(kind)) }
+                    LibraryCard(kind = kind) { setBlocks(blocks + ProfileBlock(kind)) }
                 }
                 Spacer(Modifier.height(24.dp))
             }
@@ -147,7 +170,7 @@ private fun TemplateChip(name: String, active: Boolean, onClick: () -> Unit) {
     )
 }
 
-/** Блок в профиле: порядок (↑ ↓), удаление и текст, если у вида блока он есть. */
+/** Блок в профиле: порядок (↑ ↓), удаление, текст или содержимое блока (body). */
 @Composable
 private fun ActiveBlockCard(
     block: ProfileBlock,
@@ -157,6 +180,7 @@ private fun ActiveBlockCard(
     onDown: () -> Unit,
     onRemove: () -> Unit,
     onText: (String) -> Unit,
+    body: @Composable () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().hudPanel(cut = 12.dp).padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -198,7 +222,127 @@ private fun ActiveBlockCard(
                 modifier = Modifier.fillMaxWidth(),
             )
         } else {
-            Text(block.kind.hint, color = Muted, fontSize = 11.sp)
+            body()
+        }
+    }
+}
+
+/** Обложка: превью и выбор фото. */
+@Composable
+private fun CoverEditor(coverUri: String?, onChange: (String?) -> Unit) {
+    val pick = rememberCoverPicker { onChange(it.uri) }
+    val preview = coverUri?.let { rememberThumb(it, 800) }
+    Column(Modifier.fillMaxWidth()) {
+        if (preview != null) {
+            Image(
+                bitmap = preview,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(110.dp)
+                    .hudPanel(cut = 8.dp),
+            )
+            Spacer(Modifier.height(8.dp))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            HudButton(
+                text = if (preview == null) "Выбрать обложку" else "Заменить",
+                onClick = pick,
+                modifier = Modifier.weight(1f),
+            )
+            if (coverUri != null) {
+                Spacer(Modifier.width(12.dp))
+                Text("УБРАТЬ", color = Red, fontSize = 11.sp, letterSpacing = 1.sp, modifier = Modifier.clickable { onChange(null) })
+            }
+        }
+    }
+}
+
+/** Фото для карусели: добавление нескольких и удаление по одному. */
+@Composable
+private fun PhotosEditor(photos: List<Attachment>, onChange: (List<Attachment>) -> Unit) {
+    val pick = rememberPhotoPicker(maxItems = 20) { onChange(photos + it) }
+    Column(Modifier.fillMaxWidth()) {
+        if (photos.isNotEmpty()) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                photos.forEachIndexed { index, photo ->
+                    val thumb = rememberThumb(photo.uri, 200)
+                    Box(Modifier.size(64.dp).hudPanel(cut = 6.dp)) {
+                        if (thumb != null) {
+                            Image(
+                                bitmap = thumb,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize().padding(3.dp),
+                            )
+                        }
+                        Text(
+                            "×",
+                            color = Red,
+                            fontSize = 14.sp,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .background(Bg.copy(alpha = 0.8f))
+                                .clickable { onChange(photos.filterIndexed { i, _ -> i != index }) }
+                                .padding(horizontal = 4.dp),
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        HudButton(
+            text = if (photos.isEmpty()) "Добавить фото" else "Добавить ещё",
+            onClick = pick,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+/** Друзья: поле для ника, добавление и удаление. */
+@Composable
+private fun FriendsEditor(friends: List<String>, onChange: (List<String>) -> Unit) {
+    var input by remember { mutableStateOf("") }
+    val nick = input.trim().removePrefix("@")
+    val canAdd = nick.isNotEmpty() && nick !in friends
+    Column(Modifier.fillMaxWidth()) {
+        HudTextField(
+            value = input,
+            onValueChange = { input = it },
+            label = "Ник друга",
+            placeholder = "adonis",
+            maxLength = 20,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
+        HudButton(
+            text = "Добавить друга",
+            onClick = {
+                if (canAdd) {
+                    onChange(friends + nick)
+                    input = ""
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (friends.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            friends.forEach { friend ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("@$friend", color = TextMain, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Text(
+                        "УБРАТЬ",
+                        color = Red,
+                        fontSize = 10.sp,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.clickable { onChange(friends - friend) }.padding(4.dp),
+                    )
+                }
+            }
         }
     }
 }

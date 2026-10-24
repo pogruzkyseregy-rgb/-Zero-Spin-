@@ -1,9 +1,18 @@
 package com.zerospin.app.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.graphicsLayer
+import com.zerospin.app.data.Attachment
+import kotlin.math.absoluteValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -259,6 +269,99 @@ private fun BlockView(block: ProfileBlock, profile: Profile, postCount: Int, cha
         BlockKind.QUOTE -> if (block.text.isNotBlank()) QuotePanel(block.text)
         BlockKind.LOCATION -> if (block.text.isNotBlank()) InfoRow(BlockKind.LOCATION.title, block.text)
         BlockKind.LINK -> if (block.text.isNotBlank()) InfoRow(BlockKind.LINK.title, block.text)
+        BlockKind.COVER -> profile.coverUri?.let { CoverBanner(it) }
+        BlockKind.PHOTOS -> if (profile.photos.isNotEmpty()) PhotoCarousel(profile.photos)
+        BlockKind.FRIENDS -> if (profile.friends.isNotEmpty()) FriendsPanel(profile.friends)
+    }
+}
+
+/** Широкая обложка вверху блока, в рамке без срезанных углов. */
+@Composable
+private fun CoverBanner(uri: String) {
+    val cover = rememberThumb(uri, 1080)
+    if (cover != null) {
+        Image(
+            bitmap = cover,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(150.dp)
+                .border(1.dp, Cyan.copy(alpha = 0.5f), RectangleShape),
+        )
+    }
+}
+
+/**
+ * Карусель фото по кругу: листается в обе стороны без конца.
+ * Соседние фото немного уменьшаются и бледнеют, текущее — в центре.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PhotoCarousel(photos: List<Attachment>) {
+    val count = photos.size
+    // Начинаем из середины огромного диапазона, чтобы можно было листать в обе стороны
+    val start = Int.MAX_VALUE / 2 - (Int.MAX_VALUE / 2) % count
+    val pager = rememberPagerState(initialPage = start) { Int.MAX_VALUE }
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        HorizontalPager(
+            state = pager,
+            modifier = Modifier.fillMaxWidth().height(220.dp),
+            contentPadding = PaddingValues(horizontal = 44.dp),
+            pageSpacing = 12.dp,
+        ) { page ->
+            val thumb = rememberThumb(photos[page % count].uri, 900)
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val off = pager.getOffsetFractionForPage(page).absoluteValue.coerceAtMost(1f)
+                        scaleX = 1f - 0.12f * off
+                        scaleY = 1f - 0.12f * off
+                        alpha = 1f - 0.5f * off
+                    }
+                    .hudPanel(cut = 14.dp)
+                    .padding(3.dp),
+            ) {
+                if (thumb != null) {
+                    Image(
+                        bitmap = thumb,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "${pager.currentPage % count + 1} / $count",
+            color = Muted,
+            fontSize = 10.sp,
+            letterSpacing = 1.sp,
+        )
+    }
+}
+
+/** Друзья: счётчик и список с инициалом в кольце. */
+@Composable
+private fun FriendsPanel(friends: List<String>) {
+    Column(Modifier.fillMaxWidth().hudPanel(cut = 12.dp).padding(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("ДРУЗЬЯ", color = Muted, fontSize = 11.sp, letterSpacing = 1.5.sp)
+            Spacer(Modifier.weight(1f))
+            Text(friends.size.toString(), color = Cyan, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+        Spacer(Modifier.height(10.dp))
+        friends.forEach { friend ->
+            Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                TargetRing(Modifier.size(30.dp)) {
+                    Text(friend.take(1).uppercase(), color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.width(10.dp))
+                Text("@$friend", color = TextMain, fontSize = 13.sp)
+            }
+        }
     }
 }
 

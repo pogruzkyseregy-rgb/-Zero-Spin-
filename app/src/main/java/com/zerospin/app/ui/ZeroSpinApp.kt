@@ -319,8 +319,8 @@ fun ZeroSpinApp() {
 
     if (showBuilder) {
         ProfileBuilderScreen(
-            blocks = store.profile.value.blocks,
-            onChange = { store.profile.value = store.profile.value.copy(blocks = it) },
+            profile = store.profile.value,
+            onProfile = { store.profile.value = it },
             onDismiss = { showBuilder = false },
         )
     }

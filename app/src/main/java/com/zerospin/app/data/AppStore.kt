@@ -52,7 +52,10 @@ class AppStore(context: Context) {
             .put("bio", p.bio).put("birthday", p.birthday).put("avatar", p.avatarUri ?: "")
             .put("blocks", JSONArray().apply {
                 p.blocks.forEach { put(JSONObject().put("k", it.kind.name).put("t", it.text)) }
-            }))
+            })
+            .put("cover", p.coverUri ?: "")
+            .put("photos", attachmentsToJson(p.photos))
+            .put("friends", JSONArray(p.friends)))
         root.put("settings", JSONObject()
             .put("notifications", s.notifications).put("sounds", s.sounds).put("vibration", s.vibration)
             .put("showOnline", s.showOnline).put("readReceipts", s.readReceipts)
@@ -131,6 +134,9 @@ class AppStore(context: Context) {
                     runCatching { BlockKind.valueOf(b.getString("k")) }.getOrNull()
                         ?.let { ProfileBlock(it, b.optString("t")) }
                 } ?: BlockTemplates[1].second,
+                coverUri = o.optString("cover", "").ifBlank { null },
+                photos = attachmentsFromJson(o.optJSONArray("photos")),
+                friends = o.optJSONArray("friends")?.strings() ?: emptyList(),
             )
         }
         root.optJSONObject("settings")?.let { o ->

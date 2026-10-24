@@ -100,6 +100,9 @@ enum class BlockKind(val title: String, val hint: String, val hasText: Boolean) 
     QUOTE("ЦИТАТА", "Ваша фраза или девиз", true),
     LOCATION("ГОРОД", "Где вы сейчас или откуда", true),
     LINK("ССЫЛКА", "Канал, сайт или контакт", true),
+    COVER("ОБЛОЖКА", "Широкое фото вверху профиля", false),
+    PHOTOS("ФОТО", "Ваши фото по кругу, листаются бесконечно", false),
+    FRIENDS("ДРУЗЬЯ", "Список друзей по нику", false),
 }
 
 /** Блок профиля: вид и свой текст (только для видов с hasText). */
@@ -121,9 +124,12 @@ val BlockTemplates: List<Pair<String, List<ProfileBlock>>> = listOf(
         ProfileBlock(BlockKind.BIRTHDAY),
     ),
     "Полный" to listOf(
+        ProfileBlock(BlockKind.COVER),
         ProfileBlock(BlockKind.QUOTE, "Тишина тоже сигнал"),
         ProfileBlock(BlockKind.ABOUT),
         ProfileBlock(BlockKind.STATS),
+        ProfileBlock(BlockKind.PHOTOS),
+        ProfileBlock(BlockKind.FRIENDS),
         ProfileBlock(BlockKind.BIRTHDAY),
         ProfileBlock(BlockKind.LOCATION),
         ProfileBlock(BlockKind.LINK),
@@ -141,6 +147,12 @@ data class Profile(
     val avatarUri: String? = null,
     /** Блоки профиля в порядке показа сверху вниз */
     val blocks: List<ProfileBlock> = BlockTemplates[1].second,
+    /** Обложка профиля (широкое фото) или null */
+    val coverUri: String? = null,
+    /** Фото для карусели в профиле */
+    val photos: List<Attachment> = emptyList(),
+    /** Друзья: ники */
+    val friends: List<String> = emptyList(),
 )
 
 data class AppSettings(
