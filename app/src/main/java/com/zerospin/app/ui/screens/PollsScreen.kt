@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -63,6 +65,7 @@ fun PollsScreen(
     polls: List<Poll>,
     onAdd: (Poll) -> Unit,
     onVote: (pollId: Int, option: Int) -> Unit,
+    onToggleClosed: (pollId: Int, closed: Boolean) -> Unit,
 ) {
     var adding by rememberSaveable { mutableStateOf(false) }
 
@@ -91,23 +94,32 @@ fun PollsScreen(
             item { HudEmptyState("ОПРОСОВ НЕТ", "Спросите круг о чём-нибудь") }
         }
         items(polls, key = { it.id }) { poll ->
-            PollCard(poll = poll, onVote = { option -> onVote(poll.id, option) })
+            PollCard(
+                poll = poll,
+                onVote = { option -> onVote(poll.id, option) },
+                onToggleClosed = { onToggleClosed(poll.id, !poll.closed) },
+            )
         }
     }
 }
 
-/** Один блок: фото на фоне, вопрос, варианты-полоски с процентами внутри и вложения. */
+/**
+ * Карточка опроса в духе Telegram и WhatsApp: до голоса видны только варианты с кружками
+ * (или квадратами для нескольких ответов). После голоса появляются проценты и полоски.
+ */
 @Composable
-private fun PollCard(poll: Poll, onVote: (Int) -> Unit) {
+private fun PollCard(poll: Poll, onVote: (Int) -> Unit, onToggleClosed: () -> Unit) {
     val total = poll.votes.sum()
     val cover = poll.cover?.let { rememberThumb(it.uri, 1080) }
+    val voted = poll.myVotes.isNotEmpty()
+    val showResults = voted || poll.closed
     val maxVotes = poll.votes.maxOrNull() ?: 0
-    val leader = if (maxVotes > 0 && poll.votes.count { it == maxVotes } == 1) poll.votes.indexOf(maxVotes) else -1
+    val leaders = if (maxVotes > 0) poll.votes.indices.filter { poll.votes[it] == maxVotes }.toSet() else emptySet()
 
     Column(Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().hudPanel(cut = 14.dp)) {
+        Column(Modifier.fillMaxWidth().hudPanel(cut = 16.dp)) {
             if (cover != null) {
-                // Фото на фоне: сверху, без обрезки рамкой; текст ниже с затемнением
+                // Обложка в собственной рамке с отступом: не заходит на срезанные углы панели
                 Image(
                     bitmap = cover,
                     contentDescription = null,
@@ -123,31 +135,53 @@ private fun PollCard(poll: Poll, onVote: (Int) -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("ОПРОС", color = Violet, fontSize = 10.sp, letterSpacing = 2.sp)
                     Spacer(Modifier.weight(1f))
-                    Text("голосов: $total", color = Muted, fontSize = 10.sp)
+                    if (poll.closed) {
+                        Tag("ЗАКРЫТ", Red)
+                    } else {
+                        Tag(if (poll.multiple) "НЕСКОЛЬКО" else "ОДИН ОТВЕТ", Muted)
+                    }
                 }
-                Spacer(Modifier.height(4.dp))
-                Text(poll.question, color = TextMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
+                Text(poll.question, color = TextMain, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                Spacer(Modifier.height(14.dp))
+
                 poll.options.forEachIndexed { index, option ->
-                    OptionBar(
+                    OptionRow(
                         option = option,
                         count = poll.votes.getOrElse(index) { 0 },
                         total = total,
-                        mine = poll.myVote == index,
-                        leading = index == leader,
+                        selected = index in poll.myVotes,
+                        leading = index in leaders && total > 0,
+                        showResults = showResults,
+                        multiple = poll.multiple,
+                        enabled = !poll.closed,
                         onClick = { onVote(index) },
                     )
                     Spacer(Modifier.height(8.dp))
                 }
-                Text(
-                    if (poll.myVote == null) {
-                        "Нажмите вариант, чтобы проголосовать"
-                    } else {
-                        "Ваш голос учтён · нажмите тот же вариант, чтобы снять"
-                    },
-                    color = Muted,
-                    fontSize = 10.sp,
-                )
+
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        when {
+                            poll.closed -> "Голосование завершено · ${total} гол."
+                            voted -> "Ваш выбор учтён · ${total} гол."
+                            poll.multiple -> "Отметьте один или несколько · ${total} гол."
+                            else -> "Выберите вариант · ${total} гол."
+                        },
+                        color = Muted,
+                        fontSize = 11.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        if (poll.closed) "ОТКРЫТЬ" else "ЗАКРЫТЬ",
+                        color = Cyan,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.clickable(onClick = onToggleClosed).padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
+                    )
+                }
             }
         }
         if (poll.attachments.isNotEmpty()) {
@@ -158,41 +192,84 @@ private fun PollCard(poll: Poll, onVote: (Int) -> Unit) {
 }
 
 @Composable
-private fun OptionBar(option: String, count: Int, total: Int, mine: Boolean, leading: Boolean, onClick: () -> Unit) {
+private fun Tag(text: String, color: androidx.compose.ui.graphics.Color) {
+    Text(
+        text,
+        color = color,
+        fontSize = 9.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.sp,
+        modifier = Modifier
+            .border(1.dp, color.copy(alpha = 0.6f), RectangleShape)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
+}
+
+/** Вариант: индикатор выбора слева, после голоса — полоска с процентом внутри. */
+@Composable
+private fun OptionRow(
+    option: String,
+    count: Int,
+    total: Int,
+    selected: Boolean,
+    leading: Boolean,
+    showResults: Boolean,
+    multiple: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
     val fraction = if (total == 0) 0f else count.toFloat() / total
     val percent = (fraction * 100).roundToInt()
-    val accent = if (mine) Cyan else if (leading) Cyan.copy(alpha = 0.8f) else Muted
+    val accent = if (selected || leading) Cyan else Muted
+    val indicatorShape = if (multiple) RoundedCornerShape(4.dp) else CircleShape
+
     Box(
         Modifier
             .fillMaxWidth()
-            .height(44.dp)
-            .hudPanel(line = accent, fill = Bg.copy(alpha = 0.7f), cut = 6.dp)
-            .clickable(onClick = onClick),
+            .height(48.dp)
+            .hudPanel(line = accent, fill = Bg.copy(alpha = 0.7f), cut = 8.dp)
+            .clickable(enabled = enabled, onClick = onClick),
     ) {
-        Box(
-            Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(fraction)
-                .background(if (mine) Cyan.copy(alpha = 0.4f) else Cyan.copy(alpha = 0.12f)),
-        )
+        if (showResults) {
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(fraction)
+                    .background(if (selected) Cyan.copy(alpha = 0.32f) else Cyan.copy(alpha = 0.10f)),
+            )
+        }
         Row(
-            Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            Modifier.fillMaxSize().padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Box(
+                Modifier
+                    .size(18.dp)
+                    .border(1.5.dp, accent, indicatorShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (selected) {
+                    Box(Modifier.size(10.dp).background(Cyan, indicatorShape))
+                }
+            }
+            Spacer(Modifier.size(12.dp))
             Text(
-                text = (if (mine) "✓ " else "") + option,
-                color = if (mine || leading) Cyan else TextMain,
-                fontWeight = if (mine || leading) FontWeight.Bold else FontWeight.Normal,
-                fontSize = 13.sp,
+                option,
+                color = if (selected || leading) Cyan else TextMain,
+                fontWeight = if (selected || leading) FontWeight.Bold else FontWeight.Normal,
+                fontSize = 14.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            Text(
-                "$percent%  ·  $count",
-                color = if (mine) Cyan else Muted,
-                fontSize = 12.sp,
-            )
+            if (showResults) {
+                Text(
+                    "$percent%",
+                    color = if (selected) Cyan else Muted,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                )
+            }
         }
     }
 }
@@ -202,6 +279,7 @@ private fun PollForm(nextId: Int, onSave: (Poll) -> Unit, onCancel: () -> Unit) 
     var question by rememberSaveable { mutableStateOf("") }
     // Варианты — отдельные поля, их можно добавлять и удалять по одному
     var options by remember { mutableStateOf(listOf("", "")) }
+    var multiple by rememberSaveable { mutableStateOf(false) }
     var cover by remember { mutableStateOf<Attachment?>(null) }
     var attachments by remember { mutableStateOf<List<Attachment>>(emptyList()) }
 
@@ -228,6 +306,24 @@ private fun PollForm(nextId: Int, onSave: (Poll) -> Unit, onCancel: () -> Unit) 
             placeholder = "Во сколько встречаемся?", error = questionError,
             singleLine = false, minLines = 2, maxLength = 140, modifier = Modifier.fillMaxWidth(),
         )
+        Spacer(Modifier.height(14.dp))
+
+        Text("ТИП ОТВЕТА", color = Muted, fontSize = 10.sp, letterSpacing = 1.5.sp)
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            HudButton(
+                text = "Один ответ",
+                onClick = { multiple = false },
+                modifier = Modifier.weight(1f),
+                primary = !multiple,
+            )
+            HudButton(
+                text = "Несколько",
+                onClick = { multiple = true },
+                modifier = Modifier.weight(1f),
+                primary = multiple,
+            )
+        }
         Spacer(Modifier.height(14.dp))
 
         Text("ВАРИАНТЫ", color = Muted, fontSize = 10.sp, letterSpacing = 1.5.sp)
@@ -327,7 +423,7 @@ private fun PollForm(nextId: Int, onSave: (Poll) -> Unit, onCancel: () -> Unit) 
                                 question = question.trim(),
                                 options = cleanOptions,
                                 votes = List(cleanOptions.size) { 0 },
-                                myVote = null,
+                                multiple = multiple,
                                 cover = cover,
                                 attachments = attachments,
                             ),

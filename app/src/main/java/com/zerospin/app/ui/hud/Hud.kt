@@ -46,14 +46,22 @@ private fun chamferPath(size: Size, cut: Float): Path = Path().apply {
 }
 
 /** Панель со срезанным углом и тонкой светящейся линией. */
-fun Modifier.hudPanel(line: Color = Cyan, fill: Color = Panel, cut: Dp = 12.dp): Modifier =
+fun Modifier.hudPanel(
+    line: Color = Cyan,
+    fill: Color = Panel,
+    cut: Dp = 12.dp,
+    glow: Boolean = false,
+    brush: Brush? = null,
+): Modifier =
     this.drawBehind {
         val path = chamferPath(size, cut.toPx())
-        drawPath(path, fill)
+        if (brush != null) drawPath(path, brush) else drawPath(path, fill)
+        // Мягкое свечение вокруг линии: широкая полупрозрачная обводка под тонкой
+        if (glow) drawPath(path, line.copy(alpha = 0.18f), style = Stroke(width = 5.dp.toPx()))
         drawPath(path, line.copy(alpha = 0.7f), style = Stroke(width = 1.dp.toPx()))
     }
 
-/** Фон экрана: тёмная сетка, как на HUD-референсах. */
+/** Фон экрана: тёмная сетка, как на HUD-референсах, и мягкое фиолетовое свечение в углу. */
 @Composable
 fun HudBackground(content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit) {
     Box(
@@ -61,6 +69,13 @@ fun HudBackground(content: @Composable androidx.compose.foundation.layout.BoxSco
             .fillMaxSize()
             .background(Bg)
             .drawBehind {
+                drawRect(
+                    Brush.radialGradient(
+                        listOf(Violet.copy(alpha = 0.12f), Color.Transparent),
+                        center = Offset(size.width * 0.9f, 0f),
+                        radius = size.maxDimension * 0.6f,
+                    ),
+                )
                 val step = 36.dp.toPx()
                 val grid = Cyan.copy(alpha = 0.06f)
                 var x = 0f
@@ -90,7 +105,13 @@ fun HudButton(
     Box(
         modifier = modifier
             .defaultMinSize(minHeight = 44.dp)
-            .hudPanel(cut = 10.dp, fill = if (primary) Cyan else Panel)
+            .hudPanel(
+                line = Cyan,
+                cut = 10.dp,
+                fill = Panel,
+                glow = primary,
+                brush = if (primary) Brush.linearGradient(listOf(Cyan, Violet)) else null,
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,

@@ -99,7 +99,9 @@ class AppStore(context: Context) {
                 put(JSONObject().put("id", poll.id).put("question", poll.question)
                     .put("options", JSONArray(poll.options))
                     .put("votes", JSONArray(poll.votes))
-                    .put("myVote", poll.myVote ?: JSONObject.NULL)
+                    .put("myVotes", JSONArray(poll.myVotes))
+                    .put("multiple", poll.multiple)
+                    .put("closed", poll.closed)
                     .put("cover", poll.cover?.let { attachmentsToJson(listOf(it)).getJSONObject(0) } ?: JSONObject.NULL)
                     .put("attachments", attachmentsToJson(poll.attachments)))
             }
@@ -180,7 +182,10 @@ class AppStore(context: Context) {
                 id = o.getInt("id"), question = o.getString("question"),
                 options = o.getJSONArray("options").strings(),
                 votes = o.getJSONArray("votes").ints(),
-                myVote = if (o.isNull("myVote")) null else o.getInt("myVote"),
+                myVotes = o.optJSONArray("myVotes")?.ints()
+                    ?: if (o.isNull("myVote")) emptyList() else listOf(o.getInt("myVote")),
+                multiple = o.optBoolean("multiple"),
+                closed = o.optBoolean("closed"),
                 cover = if (o.isNull("cover")) null else attachmentsFromJson(JSONArray().put(o.getJSONObject("cover"))).firstOrNull(),
                 attachments = attachmentsFromJson(o.optJSONArray("attachments")),
             ))

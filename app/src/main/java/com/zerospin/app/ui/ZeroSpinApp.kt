@@ -30,6 +30,8 @@ import com.zerospin.app.data.auroraReply
 import com.zerospin.app.data.nextId
 import com.zerospin.app.data.nowMillis
 import com.zerospin.app.data.nowTime
+import androidx.compose.runtime.CompositionLocalProvider
+import com.zerospin.app.ui.components.LocalAvatarSetter
 import com.zerospin.app.ui.hud.HudBackground
 import com.zerospin.app.ui.hud.HudIconKind
 import com.zerospin.app.ui.hud.HudTab
@@ -93,11 +95,28 @@ fun ZeroSpinApp() {
         val i = store.polls.indexOfFirst { it.id == pollId }
         if (i < 0) return
         val poll = store.polls[i]
+        if (poll.closed) return
         val votes = poll.votes.toMutableList()
-        poll.myVote?.let { votes[it] = votes[it] - 1 }
-        val newVote = if (poll.myVote == option) null else option
-        if (newVote != null) votes[newVote] = votes[newVote] + 1
-        store.polls[i] = poll.copy(votes = votes, myVote = newVote)
+        val mine = poll.myVotes.toMutableList()
+        if (option in mine) {
+            // Повторное нажатие снимает голос
+            mine.remove(option)
+            votes[option] = (votes[option] - 1).coerceAtLeast(0)
+        } else {
+            // В режиме одного ответа новый выбор заменяет старый
+            if (!poll.multiple) {
+                mine.forEach { votes[it] = (votes[it] - 1).coerceAtLeast(0) }
+                mine.clear()
+            }
+            mine.add(option)
+            votes[option] = votes[option] + 1
+        }
+        store.polls[i] = poll.copy(votes = votes, myVotes = mine)
+    }
+
+    fun setPollClosed(pollId: Int, closed: Boolean) {
+        val i = store.polls.indexOfFirst { it.id == pollId }
+        if (i >= 0) store.polls[i] = store.polls[i].copy(closed = closed)
     }
 
     // Репост: счётчик на исходной записи и новая запись со ссылкой на неё. Повторно нажать — отменить.
@@ -183,6 +202,9 @@ fun ZeroSpinApp() {
 
     BackHandler(enabled = section != NO_SECTION) { section = NO_SECTION }
 
+    CompositionLocalProvider(
+        LocalAvatarSetter provides { uri -> store.profile.value = store.profile.value.copy(avatarUri = uri) },
+    ) {
     HudBackground {
         Scaffold(
             containerColor = Color.Transparent,
@@ -266,6 +288,7 @@ fun ZeroSpinApp() {
                             polls = store.polls,
                             onAdd = { store.polls.add(it) },
                             onVote = { pollId, option -> vote(pollId, option) },
+                            onToggleClosed = { pollId, closed -> setPollClosed(pollId, closed) },
                         )
                         SECTION_COIN -> CoinScreen()
                         else -> AppsScreen(
@@ -287,6 +310,8 @@ fun ZeroSpinApp() {
                 }
             }
         }
+    }
+
     }
 
     if (showSettings) {

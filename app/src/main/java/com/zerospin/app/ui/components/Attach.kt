@@ -1,9 +1,12 @@
 package com.zerospin.app.ui.components
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -32,7 +35,11 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.text.font.FontWeight
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -212,12 +219,42 @@ private fun PhotoTile(item: Attachment, onRemove: (() -> Unit)?) {
     if (open) PhotoViewer(item, onDismiss = { open = false })
 }
 
+/** Установка фото профиля из любого места приложения. Задаётся в ZeroSpinApp. */
+val LocalAvatarSetter = staticCompositionLocalOf<((String) -> Unit)?> { null }
+
+/** Копирует фото в галерею (папка Pictures/Zero Spin). Возвращает true при успехе. */
+private fun saveToGallery(context: Context, item: Attachment): Boolean = runCatching {
+    val resolver = context.contentResolver
+    val ext = when (item.mime) {
+        "image/png" -> "png"
+        "image/webp" -> "webp"
+        else -> "jpg"
+    }
+    val values = ContentValues().apply {
+        put(MediaStore.Images.Media.DISPLAY_NAME, "zerospin_${System.currentTimeMillis()}.$ext")
+        put(MediaStore.Images.Media.MIME_TYPE, if (ext == "jpg") "image/jpeg" else item.mime)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Zero Spin")
+        }
+    }
+    val target = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return false
+    val copied = resolver.openInputStream(Uri.parse(item.uri))?.use { input ->
+        resolver.openOutputStream(target)?.use { input.copyTo(it) } != null
+    } ?: false
+    if (!copied) resolver.delete(target, null, null)
+    copied
+}.getOrDefault(false)
+
 /** Полноэкранный просмотр: фото во весь экран, двойной тап и щипок для увеличения, ✕ закрывает. */
 @Composable
 private fun PhotoViewer(item: Attachment, onDismiss: () -> Unit) {
     val full = rememberThumb(item.uri, 2048)
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val setAvatar = LocalAvatarSetter.current
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
+    var notice by remember { mutableStateOf<String?>(null) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -264,8 +301,54 @@ private fun PhotoViewer(item: Attachment, onDismiss: () -> Unit) {
                     .clickable(onClick = onDismiss)
                     .padding(horizontal = 12.dp, vertical = 4.dp),
             )
+            Row(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 32.dp, start = 16.dp, end = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                ViewerAction("СОХРАНИТЬ") {
+                    scope.launch {
+                        val ok = withContext(Dispatchers.IO) { saveToGallery(context, item) }
+                        notice = if (ok) "Сохранено в галерею" else "Не удалось сохранить"
+                    }
+                }
+                if (setAvatar != null) {
+                    ViewerAction("НА ПРОФИЛЬ") {
+                        setAvatar(item.uri)
+                        notice = "Фото профиля обновлено"
+                    }
+                }
+            }
+            notice?.let {
+                Text(
+                    it,
+                    color = Cyan,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 92.dp)
+                        .background(Bg.copy(alpha = 0.8f))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun ViewerAction(label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        color = Bg,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.sp,
+        modifier = Modifier
+            .background(Cyan)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+    )
 }
 
 @Composable

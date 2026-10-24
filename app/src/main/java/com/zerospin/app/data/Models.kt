@@ -80,7 +80,12 @@ data class Poll(
     val question: String,
     val options: List<String>,
     val votes: List<Int>,
-    val myVote: Int?,
+    /** Индексы вариантов, за которые проголосовал я (один или несколько) */
+    val myVotes: List<Int> = emptyList(),
+    /** Можно выбрать несколько вариантов */
+    val multiple: Boolean = false,
+    /** Опрос закрыт: голосовать больше нельзя */
+    val closed: Boolean = false,
     /** Фото на фон опроса */
     val cover: Attachment? = null,
     /** Прикреплённые фото и файлы */
