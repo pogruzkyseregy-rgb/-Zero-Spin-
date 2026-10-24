@@ -206,7 +206,13 @@ fun ZeroSpinApp() {
             text = text,
             time = nowTime(),
         )
-        if (openChat != chatId) updateChat(chatId) { it.copy(unread = it.unread + 1) }
+        // Непрочитанным считается, если чат не на экране (другой чат или другая вкладка)
+        if (openChat != chatId || tab != 1) updateChat(chatId) { it.copy(unread = it.unread + 1) }
+    }
+
+    // Вернулись на вкладку с открытым чатом — он прочитан
+    LaunchedEffect(tab, openChat) {
+        if (tab == 1 && openChat >= 0) updateChat(openChat) { if (it.unread == 0) it else it.copy(unread = 0) }
     }
 
     fun sendMessage(chatId: Int, text: String, attachments: List<Attachment>, replyTo: Int?) {

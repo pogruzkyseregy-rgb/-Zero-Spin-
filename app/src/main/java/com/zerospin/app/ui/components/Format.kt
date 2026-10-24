@@ -16,7 +16,8 @@ import com.zerospin.app.ui.theme.Mint
  * Простая разметка в сообщениях, как в Telegram:
  * **жирный**, __подчёркнутый__, ~~зачёркнутый~~, `код`, _курсив_ и ссылки http(s)://…
  */
-private val FormatRegex = Regex("""\*\*(.+?)\*\*|__(.+?)__|~~(.+?)~~|`([^`]+)`|_(.+?)_|(https?://\S+)""")
+// Курсив только для отдельных слов: file_name_test не превращается в курсив
+private val FormatRegex = Regex("""\*\*(.+?)\*\*|__(.+?)__|~~(.+?)~~|`([^`]+)`|(?<![\p{L}\p{N}])_(.+?)_(?![\p{L}\p{N}])|(https?://\S+)""")
 
 private val UrlRegex = Regex("""https?://\S+""")
 

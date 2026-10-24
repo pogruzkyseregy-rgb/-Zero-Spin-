@@ -371,19 +371,22 @@ private fun StoryViewer(
     onDelete: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var index by remember { mutableIntStateOf(startIndex) }
+    // Порядок фиксируется при открытии: отметка «просмотрено» не должна менять очередь на ходу
+    val order = remember { stories.map { it.id } }
+    var index by remember { mutableIntStateOf(startIndex.coerceIn(0, (order.size - 1).coerceAtLeast(0))) }
     val progress = remember { Animatable(0f) }
-    val story = stories.getOrNull(index)
+    val story = order.getOrNull(index)?.let { id -> stories.firstOrNull { it.id == id } }
 
-    LaunchedEffect(index, story?.id) {
+    LaunchedEffect(index, story == null) {
         if (story == null) {
-            onDismiss()
+            // История удалена — к следующей или закрыть
+            if (index < order.size - 1) index += 1 else onDismiss()
             return@LaunchedEffect
         }
         onSeen(story.id)
         progress.snapTo(0f)
         progress.animateTo(1f, tween(5000, easing = LinearEasing))
-        if (index < stories.size - 1) index += 1 else onDismiss()
+        if (index < order.size - 1) index += 1 else onDismiss()
     }
 
     if (story == null) return
@@ -404,13 +407,13 @@ private fun StoryViewer(
                 )
                 Box(
                     Modifier.weight(2f).fillMaxHeight().clickable(interactionSource = noRipple, indication = null) {
-                        if (index < stories.size - 1) index += 1 else onDismiss()
+                        if (index < order.size - 1) index += 1 else onDismiss()
                     },
                 )
             }
             Column(Modifier.fillMaxWidth().statusBarsPadding().padding(12.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    stories.indices.forEach { i ->
+                    order.indices.forEach { i ->
                         val fill = when {
                             i < index -> 1f
                             i == index -> progress.value
