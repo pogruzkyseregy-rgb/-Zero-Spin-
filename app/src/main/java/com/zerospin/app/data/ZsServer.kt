@@ -19,6 +19,28 @@ data class ZsProfile(val login: String, val name: String, val status: String, va
 
 data class ZsNews(val id: Int, val text: String, val hasImage: Boolean, val at: Long, val name: String)
 
+/** Человек на сервере, как его видят другие. relation: self, friends, outgoing, incoming, none. */
+data class ZsPerson(
+    val login: String,
+    val name: String,
+    val status: String,
+    val bio: String,
+    val role: String,
+    val banned: Boolean,
+    val hasAvatar: Boolean,
+    val avatarV: Long,
+    val relation: String = "",
+) {
+    val team: Boolean get() = role == "admin" || role == "aurora"
+}
+
+data class ZsFriends(val friends: List<ZsPerson>, val incoming: List<ZsPerson>, val outgoing: List<ZsPerson>)
+
+/** Личное сообщение с сервера. */
+data class ZsDm(val id: Int, val from: String, val to: String, val text: String, val hasImage: Boolean, val at: Long)
+
+data class ZsSync(val messages: List<ZsDm>, val incoming: Int, val lastId: Int, val more: Boolean)
+
 data class ZsReply(
     val reply: String,
     val warned: Boolean,
@@ -99,6 +121,72 @@ object ZsServer {
         call(base, "/api/admin/aurora-avatar", "POST", token, JSONObject().put("image", b64))
     }
 
+    private fun person(o: JSONObject) = ZsPerson(
+        o.optString("login"), o.optString("name"), o.optString("status"), o.optString("bio"), o.optString("role", "user"),
+        o.optBoolean("banned"), o.optBoolean("has_avatar"), o.optLong("avatar_v"), o.optString("relation"),
+    )
+
+    private fun people(arr: org.json.JSONArray?): List<ZsPerson> =
+        if (arr == null) emptyList() else (0 until arr.length()).map { person(arr.getJSONObject(it)) }
+
+    private fun dm(o: JSONObject) = ZsDm(o.optInt("id"), o.optString("from"), o.optString("to"), o.optString("text"),
+        o.optBoolean("has_image"), (o.optDouble("at") * 1000).toLong())
+
+    private fun enc(s: String) = java.net.URLEncoder.encode(s, "UTF-8")
+
+    suspend fun search(base: String, token: String, q: String): List<ZsPerson> =
+        people(call(base, "/api/people/search?q=${enc(q)}", "GET", token, null).optJSONArray("people"))
+
+    suspend fun person(base: String, token: String, login: String): ZsPerson =
+        person(call(base, "/api/people/${enc(login)}", "GET", token, null))
+
+    suspend fun friends(base: String, token: String): ZsFriends {
+        val j = call(base, "/api/friends", "GET", token, null)
+        return ZsFriends(people(j.optJSONArray("friends")), people(j.optJSONArray("incoming")), people(j.optJSONArray("outgoing")))
+    }
+
+    /** action: request (позвать), accept (принять), remove (отклонить, отменить, убрать из друзей). */
+    suspend fun friend(base: String, token: String, action: String, login: String): ZsPerson =
+        person(call(base, "/api/friends/$action", "POST", token, JSONObject().put("login", login)))
+
+    suspend fun sendDm(base: String, token: String, login: String, text: String, jpeg: ByteArray? = null): ZsDm {
+        val body = JSONObject().put("text", text)
+        if (jpeg != null) body.put("image", android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP))
+        return dm(call(base, "/api/dm/${enc(login)}", "POST", token, body))
+    }
+
+    suspend fun sync(base: String, token: String, after: Int): ZsSync {
+        val j = call(base, "/api/sync?after=$after", "GET", token, null)
+        val arr = j.optJSONArray("messages")
+        val list = if (arr == null) emptyList() else (0 until arr.length()).map { dm(arr.getJSONObject(it)) }
+        return ZsSync(list, j.optInt("incoming"), j.optInt("last_id", after), j.optBoolean("more"))
+    }
+
+    suspend fun updateMe(base: String, token: String, name: String, status: String, bio: String): ZsPerson =
+        person(call(base, "/api/me/profile", "POST", token, JSONObject().put("name", name).put("status", status).put("bio", bio)))
+
+    suspend fun uploadMyAvatar(base: String, token: String, jpeg: ByteArray): ZsPerson {
+        val b64 = android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP)
+        return person(call(base, "/api/me/avatar", "POST", token, JSONObject().put("image", b64)))
+    }
+
+    /** Скачать файл с сервера (фото из лички) на телефон. true, если получилось. */
+    suspend fun download(base: String, token: String, path: String, file: java.io.File): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val c = (URL(base.trimEnd('/') + path).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 10_000; readTimeout = 60_000
+                setRequestProperty("Authorization", "Bearer $token")
+            }
+            try {
+                if (c.responseCode != 200) return@runCatching false
+                file.parentFile?.mkdirs()
+                val tmp = java.io.File(file.path + ".part")
+                c.inputStream.use { input -> tmp.outputStream().use { input.copyTo(it) } }
+                tmp.renameTo(file)
+            } finally { c.disconnect() }
+        }.getOrDefault(false)
+    }
+
     /** Картинка с сервера (аватар, фото новости). null, если её нет или нет связи. */
     suspend fun image(base: String, path: String): android.graphics.Bitmap? = withContext(Dispatchers.IO) {
         runCatching {
@@ -139,6 +227,31 @@ suspend fun squareAvatarJpeg(context: android.content.Context, uri: String, size
         val out = android.graphics.Bitmap.createScaledBitmap(square, size, size, true)
         java.io.ByteArrayOutputStream().use { bos ->
             out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, bos)
+            bos.toByteArray()
+        }
+    }.getOrNull()
+}
+
+/** Фото для лички: длинная сторона не больше maxSide, JPEG. null, если картинку не удалось прочитать. */
+suspend fun scaledJpeg(context: android.content.Context, uri: String, maxSide: Int = 1600): ByteArray? = withContext(Dispatchers.IO) {
+    runCatching {
+        val u = android.net.Uri.parse(uri)
+        val r = context.contentResolver
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        r.openInputStream(u)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
+        var bmp = r.openInputStream(u)?.use {
+            android.graphics.BitmapFactory.decodeStream(it, null, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+        } ?: return@runCatching null
+        val long = maxOf(bmp.width, bmp.height)
+        if (long > maxSide) {
+            val k = maxSide.toFloat() / long
+            bmp = android.graphics.Bitmap.createScaledBitmap(bmp, (bmp.width * k).toInt(), (bmp.height * k).toInt(), true)
+        }
+        java.io.ByteArrayOutputStream().use { bos ->
+            bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, bos)
             bos.toByteArray()
         }
     }.getOrNull()

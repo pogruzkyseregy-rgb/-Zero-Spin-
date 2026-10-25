@@ -68,7 +68,8 @@ class AppStore(context: Context) {
             .put("animatedBackground", s.animatedBackground).put("pinHash", s.pinHash)
             .put("serverUrl", s.serverUrl).put("serverToken", s.serverToken).put("serverNick", s.serverNick)
             .put("zsWarnings", s.zsWarnings).put("zsBanned", s.zsBanned).put("zsBanReason", s.zsBanReason)
-            .put("serverRole", s.serverRole).put("authSkipped", s.authSkipped))
+            .put("serverRole", s.serverRole).put("authSkipped", s.authSkipped)
+            .put("syncAfter", s.syncAfter).put("friendRequests", s.friendRequests))
         root.put("posts", JSONArray().apply {
             posts.forEach { post ->
                 put(JSONObject().put("id", post.id).put("author", post.author).put("time", post.time)
@@ -96,7 +97,7 @@ class AppStore(context: Context) {
                     .put("pinned", it.pinned).put("muted", it.muted)
                     .put("pinnedMessageId", it.pinnedMessageId ?: JSONObject.NULL)
                     .put("draft", it.draft).put("unread", it.unread)
-                    .put("archived", it.archived).put("ttl", it.ttlSeconds))
+                    .put("archived", it.archived).put("ttl", it.ttlSeconds).put("peer", it.peer))
             }
         })
         root.put("messages", JSONObject().apply {
@@ -111,7 +112,8 @@ class AppStore(context: Context) {
                             .put("reactionCount", m.reactionCount)
                             .put("edited", m.edited).put("read", m.read)
                             .put("createdAt", m.createdAt)
-                            .put("forwardedFrom", m.forwardedFrom ?: JSONObject.NULL))
+                            .put("forwardedFrom", m.forwardedFrom ?: JSONObject.NULL)
+                            .put("remoteId", m.remoteId).put("failed", m.failed))
                     }
                 })
             }
@@ -184,6 +186,8 @@ class AppStore(context: Context) {
                 zsBanReason = o.optString("zsBanReason", d.zsBanReason),
                 serverRole = o.optString("serverRole", d.serverRole),
                 authSkipped = o.optBoolean("authSkipped", d.authSkipped),
+                syncAfter = o.optInt("syncAfter", d.syncAfter),
+                friendRequests = o.optInt("friendRequests", d.friendRequests),
             )
         }
         root.optJSONArray("posts")?.objects()?.forEach { o ->
@@ -216,6 +220,7 @@ class AppStore(context: Context) {
                 unread = o.optInt("unread"),
                 archived = o.optBoolean("archived"),
                 ttlSeconds = o.optInt("ttl"),
+                peer = o.optString("peer"),
             ))
         }
         root.optJSONObject("messages")?.let { obj ->
@@ -234,6 +239,8 @@ class AppStore(context: Context) {
                         read = o.optBoolean("read"),
                         createdAt = o.optLong("createdAt", nowMillis()),
                         forwardedFrom = if (o.isNull("forwardedFrom")) null else o.optString("forwardedFrom"),
+                        remoteId = o.optInt("remoteId"),
+                        failed = o.optBoolean("failed"),
                     )
                 }
                 messages[key.toInt()] = list

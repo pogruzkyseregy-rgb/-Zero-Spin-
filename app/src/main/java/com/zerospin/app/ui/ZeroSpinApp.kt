@@ -40,6 +40,22 @@ import com.zerospin.app.data.AppSettings
 import com.zerospin.app.data.ZsException
 import com.zerospin.app.data.ZsServer
 import com.zerospin.app.data.ZsSession
+import com.zerospin.app.data.ZsPerson
+import com.zerospin.app.data.ZsFriends
+import com.zerospin.app.data.AURORA_LOGIN
+import com.zerospin.app.data.scaledJpeg
+import com.zerospin.app.ui.screens.LocalPeople
+import com.zerospin.app.ui.screens.LocalZs
+import com.zerospin.app.ui.screens.PeopleScreen
+import com.zerospin.app.ui.screens.UserProfileScreen
+import com.zerospin.app.ui.screens.ZsCtx
+import androidx.compose.runtime.mutableStateMapOf
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import com.zerospin.app.data.AttachKind
 import com.zerospin.app.data.squareAvatarJpeg
 import com.zerospin.app.ui.screens.AuthScreen
@@ -85,6 +101,7 @@ private const val APP_VERSION = "v0.2 · Квант"
 @Composable
 fun ZeroSpinApp() {
     val context = LocalContext.current
+    val lifecycleOwnerForSync = LocalLifecycleOwner.current
     val store = remember { AppStore(context) }
 
     // Любое изменение данных сразу уходит в хранилище
@@ -238,11 +255,159 @@ fun ZeroSpinApp() {
         return null
     }
 
+    // ---------- друзья и личка через сервер ----------
+    val people = remember { mutableStateMapOf<String, ZsPerson>() }
+    var showPeople by rememberSaveable { mutableStateOf(false) }
+    var profileLogin by rememberSaveable { mutableStateOf<String?>(null) }
+    val syncLock = remember { Mutex() }
+    var syncKick by remember { mutableIntStateOf(0) }
+    val timeFmt = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+
+    fun peerChatId(login: String): Int? = store.chats.firstOrNull { it.peer.equals(login, ignoreCase = true) }?.id
+
+    fun ensurePeerChat(login: String, name: String): Int {
+        peerChatId(login)?.let { return it }
+        val id = nextId(store.chats.map { it.id }.filter { it != SAVED_CHAT_ID })
+        store.chats.add(Chat(id, name.ifBlank { login }, peer = login))
+        store.messages[id] = emptyList()
+        return id
+    }
+
+    /** Убрать с телефона все личные чаты (выход, другой аккаунт). На сервере они остаются и вернутся при входе. */
+    fun dropPeerChats() {
+        store.chats.filter { it.peer.isNotBlank() }.forEach { c -> store.messages.remove(c.id) }
+        store.chats.removeAll { it.peer.isNotBlank() }
+        if (openChat >= 0 && store.chats.none { it.id == openChat }) openChat = NO_CHAT
+        people.clear()
+    }
+
+    fun applyFriends(f: ZsFriends) {
+        (f.friends + f.incoming + f.outgoing).forEach { people[it.login.lowercase()] = it }
+        f.friends.forEach { p ->
+            val n = p.name.ifBlank { p.login }
+            peerChatId(p.login)?.let { id -> updateChat(id) { c -> if (c.name == n) c else c.copy(name = n) } }
+        }
+        setSettings { if (it.friendRequests == f.incoming.size) it else it.copy(friendRequests = f.incoming.size) }
+        val logins = f.friends.map { it.login }
+        if (store.profile.value.friends != logins) store.profile.value = store.profile.value.copy(friends = logins)
+    }
+
+    suspend fun refreshFriends() {
+        val s = store.settings.value
+        if (s.serverToken.isBlank()) return
+        runCatching { ZsServer.friends(s.serverUrl, s.serverToken) }.onSuccess { applyFriends(it) }
+        runCatching { ZsServer.profile(s.serverUrl, AURORA_LOGIN) }.onSuccess { a ->
+            people[AURORA_LOGIN.lowercase()] = ZsPerson(a.login, a.name, a.status, a.bio, a.role, a.banned, a.hasAvatar, a.avatarV)
+        }
+    }
+
+    fun openPeer(p: ZsPerson) {
+        people[p.login.lowercase()] = p
+        val id = ensurePeerChat(p.login, p.name)
+        showPeople = false
+        profileLogin = null
+        selectTab(1)
+        openChatById(id)
+    }
+
+    /** Забрать новое с сервера. Под замком с отправкой: своё сообщение не появится дважды. */
+    suspend fun syncOnce() = syncLock.withLock {
+        val s = store.settings.value
+        if (s.serverToken.isBlank()) return@withLock
+        var after = s.syncAfter
+        repeat(20) {
+            val r = try {
+                ZsServer.sync(s.serverUrl, s.serverToken, after)
+            } catch (e: ZsException) {
+                if (e.code == 401) setSettings { it.copy(serverToken = "", serverRole = "") }
+                return@withLock
+            }
+            for (m in r.messages) {
+                val mine = m.from.equals(s.serverNick, ignoreCase = true)
+                val peer = if (mine) m.to else m.from
+                val chatId = ensurePeerChat(peer, people[peer.lowercase()]?.name ?: peer)
+                if (store.messages[chatId].orEmpty().any { it.remoteId == m.id }) continue
+                val atts = if (m.hasImage) {
+                    val f = File(context.filesDir, "dm/${m.id}.jpg")
+                    if (f.exists() || ZsServer.download(s.serverUrl, s.serverToken, "/api/dm-image/${m.id}", f)) {
+                        listOf(Attachment(AttachKind.IMAGE, android.net.Uri.fromFile(f).toString(), "фото", "image/jpeg"))
+                    } else emptyList()
+                } else emptyList()
+                val list = store.messages[chatId].orEmpty()
+                store.messages[chatId] = list + ChatMessage(
+                    id = nextId(list.map { it.id }),
+                    fromMe = mine,
+                    text = m.text,
+                    time = timeFmt.format(Date(m.at)),
+                    attachments = atts,
+                    createdAt = m.at,
+                    remoteId = m.id,
+                )
+                if (!mine && (openChat != chatId || tab != 1)) updateChat(chatId) { it.copy(unread = it.unread + 1) }
+            }
+            after = r.lastId
+            setSettings { if (it.syncAfter == after && it.friendRequests == r.incoming) it else it.copy(syncAfter = after, friendRequests = r.incoming) }
+            if (!r.more) return@withLock
+        }
+    }
+
+    /** Отправить в личку одно сообщение: текст и не больше одного фото. */
+    fun sendToPeer(chatId: Int, localId: Int, peer: String, text: String, photo: Attachment?) {
+        scope.launch {
+            val s = store.settings.value
+            if (s.serverToken.isBlank()) {
+                updateMessage(chatId, localId) { it.copy(failed = true) }
+                showAuth = true
+                return@launch
+            }
+            syncLock.withLock {
+                try {
+                    val jpeg = photo?.let { scaledJpeg(context, it.uri) }
+                    if (photo != null && jpeg == null && text.isBlank()) throw ZsException(400, "не получилось прочитать фото")
+                    val sent = ZsServer.sendDm(s.serverUrl, s.serverToken, peer, text, jpeg)
+                    updateMessage(chatId, localId) { it.copy(remoteId = sent.id, failed = false) }
+                } catch (e: ZsException) {
+                    updateMessage(chatId, localId) { it.copy(failed = true) }
+                    Toast.makeText(context, e.message ?: "не отправлено", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    fun retry(chatId: Int, messageId: Int) {
+        val chat = store.chats.firstOrNull { it.id == chatId } ?: return
+        val m = store.messages[chatId].orEmpty().firstOrNull { it.id == messageId } ?: return
+        if (chat.peer.isBlank() || !m.failed) return
+        updateMessage(chatId, messageId) { it.copy(failed = false) }
+        sendToPeer(chatId, messageId, chat.peer, m.text, m.attachments.firstOrNull { it.kind == AttachKind.IMAGE })
+    }
+
+    /** Имя, статус и описание из профиля на телефоне уходят на сервер: так тебя видят друзья. */
+    fun pushProfile(withAvatar: Boolean) {
+        val s = store.settings.value
+        if (s.serverToken.isBlank()) return
+        val p = store.profile.value
+        scope.launch {
+            runCatching { ZsServer.updateMe(s.serverUrl, s.serverToken, p.name, p.status, p.bio) }
+            if (withAvatar) {
+                p.avatarUri?.let { uri ->
+                    squareAvatarJpeg(context, uri)?.let { jpeg -> runCatching { ZsServer.uploadMyAvatar(s.serverUrl, s.serverToken, jpeg) } }
+                }
+            }
+        }
+    }
+
     fun applySession(z: ZsSession) {
+        // другой аккаунт: личка прежнего с телефона убирается, новая придёт с сервера
+        if (!store.settings.value.serverNick.equals(z.login, ignoreCase = true)) {
+            dropPeerChats()
+            setSettings { it.copy(syncAfter = 0, friendRequests = 0) }
+        }
         setSettings {
             it.copy(serverToken = z.token, serverNick = z.login, serverRole = z.role, authSkipped = false,
                 zsWarnings = 0, zsBanned = false, zsBanReason = "")
         }
+        pushProfile(withAvatar = true)
         showAuth = false
         // бан и предупреждения этого аккаунта сразу берём с сервера
         scope.launch {
@@ -256,7 +421,11 @@ fun ZeroSpinApp() {
     fun logout() {
         val s = store.settings.value
         if (s.serverToken.isNotBlank()) scope.launch { runCatching { ZsServer.logout(s.serverUrl, s.serverToken) } }
-        setSettings { it.copy(serverToken = "", serverNick = "", serverRole = "", zsWarnings = 0, zsBanned = false, zsBanReason = "") }
+        dropPeerChats()
+        setSettings {
+            it.copy(serverToken = "", serverNick = "", serverRole = "", zsWarnings = 0, zsBanned = false, zsBanReason = "",
+                syncAfter = 0, friendRequests = 0)
+        }
     }
 
     /** «!аватар» + фото в чате с Авророй: только с аккаунта админа. Фото сразу становится её аватаром. */
@@ -354,6 +523,26 @@ fun ZeroSpinApp() {
     }
 
     fun sendMessage(chatId: Int, text: String, attachments: List<Attachment>, replyTo: Int?) {
+        val peer = store.chats.firstOrNull { it.id == chatId }?.peer.orEmpty()
+        if (peer.isNotBlank()) {
+            // личка: на сервер уходят текст и фото, по одному фото в сообщении
+            val photos = attachments.filter { it.kind == AttachKind.IMAGE }
+            if (photos.size < attachments.size) {
+                Toast.makeText(context, "В личку пока уходят только текст и фото", Toast.LENGTH_SHORT).show()
+            }
+            if (text.isBlank() && photos.isEmpty()) return
+            val parts = if (photos.isEmpty()) listOf(text to null) else photos.mapIndexed { i, ph -> (if (i == 0) text else "") to ph }
+            parts.forEachIndexed { i, (t, ph) ->
+                val l = store.messages[chatId].orEmpty()
+                val id = nextId(l.map { it.id })
+                store.messages[chatId] = l + ChatMessage(
+                    id = id, fromMe = true, text = t, time = nowTime(),
+                    attachments = listOfNotNull(ph), replyTo = if (i == 0) replyTo else null,
+                )
+                sendToPeer(chatId, id, peer, t, ph)
+            }
+            return
+        }
         val list = store.messages[chatId].orEmpty()
         store.messages[chatId] = list + ChatMessage(
             id = nextId(list.map { it.id }),
@@ -408,11 +597,35 @@ fun ZeroSpinApp() {
 
     // Галочки прочтения: через секунду после открытия чата отмечаем мои сообщения прочитанными
     LaunchedEffect(openChat, store.messages[openChat]?.size) {
-        if (openChat >= 0 && store.messages[openChat].orEmpty().any { it.fromMe && !it.read }) {
+        val isPeer = store.chats.firstOrNull { it.id == openChat }?.peer?.isNotBlank() == true
+        if (openChat >= 0 && !isPeer && store.messages[openChat].orEmpty().any { it.fromMe && !it.read }) {
             delay(1000)
             store.messages[openChat] = store.messages[openChat].orEmpty().map {
                 if (it.fromMe) it.copy(read = true) else it
             }
+        }
+    }
+
+    // Личка и заявки: часто, пока открыт чат с другом, и реже в остальное время. Только когда приложение на экране.
+    LaunchedEffect(settings.serverToken) {
+        if (settings.serverToken.isBlank()) return@LaunchedEffect
+        refreshFriends()
+        var lastIncoming = store.settings.value.friendRequests
+        var round = 0
+        while (true) {
+            if (lifecycleOwnerForSync.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                syncOnce()
+                val inc = store.settings.value.friendRequests
+                if (inc != lastIncoming || round % 6 == 5) {
+                    lastIncoming = inc
+                    refreshFriends()
+                }
+                round++
+            }
+            val peerOpen = tab == 1 && store.chats.firstOrNull { it.id == openChat }?.peer?.isNotBlank() == true
+            val seen = syncKick
+            val until = System.currentTimeMillis() + if (peerOpen) 3_000 else 12_000
+            while (System.currentTimeMillis() < until && syncKick == seen) delay(250)
         }
     }
 
@@ -439,8 +652,14 @@ fun ZeroSpinApp() {
 
     BackHandler(enabled = section != NO_SECTION) { section = NO_SECTION }
 
+    val zsCtx = ZsCtx(settings.serverUrl, settings.serverToken, settings.serverNick)
     CompositionLocalProvider(
-        LocalAvatarSetter provides { uri -> store.profile.value = store.profile.value.copy(avatarUri = uri) },
+        LocalAvatarSetter provides { uri ->
+            store.profile.value = store.profile.value.copy(avatarUri = uri)
+            pushProfile(withAvatar = true)
+        },
+        LocalZs provides zsCtx,
+        LocalPeople provides people,
     ) {
     val unreadTotal = store.chats.filter { !it.muted && !it.archived }.sumOf { it.unread }
 
@@ -462,7 +681,7 @@ fun ZeroSpinApp() {
                         tabs = tabs,
                         selected = tab,
                         onSelect = { selectTab(it) },
-                        badges = listOf(0, unreadTotal, 0, 0),
+                        badges = listOf(0, unreadTotal + settings.friendRequests, 0, 0),
                     )
                 }
             },
@@ -541,7 +760,10 @@ fun ZeroSpinApp() {
                         settings = settings,
                         openChatId = openChat,
                         typingChatId = typingChat,
-                        onOpenChat = { openChatById(it) },
+                        onOpenChat = {
+                            openChatById(it)
+                            if (store.chats.firstOrNull { c -> c.id == it }?.peer?.isNotBlank() == true) syncKick++
+                        },
                         onCreateChat = { name ->
                             // id обычных каналов не пересекаются с Избранным
                             val id = nextId(store.chats.map { it.id }.filter { it != SAVED_CHAT_ID })
@@ -564,6 +786,10 @@ fun ZeroSpinApp() {
                         onSetTtl = { id, seconds -> updateChat(id) { it.copy(ttlSeconds = seconds) } },
                         onDeleteChat = { id -> deleteChat(id) },
                         onOpenAuroraProfile = { showAuroraProfile = true },
+                        onOpenPeople = { if (settings.serverToken.isBlank()) showAuth = true else showPeople = true },
+                        onOpenProfile = { profileLogin = it },
+                        onRetry = { chatId, id -> retry(chatId, id) },
+                        friendRequests = settings.friendRequests,
                     )
 
                     2 -> when (section) {
@@ -603,8 +829,14 @@ fun ZeroSpinApp() {
                         admin = settings.serverRole == "admin" && settings.serverToken.isNotBlank(),
                         postCount = store.posts.count { it.author == myName },
                         chatCount = store.chats.count { it.id != SUPPORT_CHAT_ID && it.id != SAVED_CHAT_ID },
-                        onSave = { store.profile.value = it },
-                        onAvatar = { uri -> store.profile.value = store.profile.value.copy(avatarUri = uri) },
+                        onSave = {
+                            store.profile.value = it
+                            pushProfile(withAvatar = false)
+                        },
+                        onAvatar = { uri ->
+                            store.profile.value = store.profile.value.copy(avatarUri = uri)
+                            pushProfile(withAvatar = true)
+                        },
                         onOpenBuilder = { showBuilder = true },
                     )
                 }
@@ -644,6 +876,27 @@ fun ZeroSpinApp() {
 
     if (showAuroraProfile) {
         AuroraProfileScreen(serverUrl = settings.serverUrl, onBack = { showAuroraProfile = false })
+    }
+
+    CompositionLocalProvider(LocalZs provides zsCtx, LocalPeople provides people) {
+        if (showPeople) {
+            PeopleScreen(
+                onDismiss = { showPeople = false },
+                onWrite = { openPeer(it) },
+                onOpenProfile = { login ->
+                    if (login.equals(AURORA_LOGIN, ignoreCase = true)) showAuroraProfile = true else profileLogin = login
+                },
+                onChanged = { applyFriends(it) },
+            )
+        }
+        profileLogin?.let { login ->
+            UserProfileScreen(
+                login = login,
+                onBack = { profileLogin = null },
+                onWrite = { openPeer(it) },
+                onChanged = { scope.launch { refreshFriends() } },
+            )
+        }
     }
 
     if (showAuth) {

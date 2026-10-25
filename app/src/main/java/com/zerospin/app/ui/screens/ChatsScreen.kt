@@ -148,6 +148,10 @@ fun ChatsScreen(
     onSetTtl: (chatId: Int, seconds: Int) -> Unit,
     onDeleteChat: (chatId: Int) -> Unit,
     onOpenAuroraProfile: () -> Unit = {},
+    onOpenPeople: () -> Unit = {},
+    onOpenProfile: (String) -> Unit = {},
+    onRetry: (chatId: Int, messageId: Int) -> Unit = { _, _ -> },
+    friendRequests: Int = 0,
 ) {
     val open = chats.firstOrNull { it.id == openChatId }
     if (open == null) {
@@ -162,6 +166,8 @@ fun ChatsScreen(
             onToggleArchive = onToggleArchive,
             onSetTtl = onSetTtl,
             onDeleteChat = onDeleteChat,
+            onOpenPeople = onOpenPeople,
+            friendRequests = friendRequests,
         )
     } else {
         Conversation(
@@ -172,6 +178,8 @@ fun ChatsScreen(
             typing = typingChatId == open.id,
             onBack = { onOpenChat(-1) },
             onOpenAuroraProfile = onOpenAuroraProfile,
+            onOpenProfile = onOpenProfile,
+            onRetry = { id -> onRetry(open.id, id) },
             onSend = { text, attachments, replyTo -> onSend(open.id, text, attachments, replyTo) },
             onEdit = { id, text -> onEdit(open.id, id, text) },
             onDelete = { id -> onDelete(open.id, id) },
@@ -202,6 +210,8 @@ private fun ChatList(
     onToggleArchive: (Int) -> Unit,
     onSetTtl: (Int, Int) -> Unit,
     onDeleteChat: (Int) -> Unit,
+    onOpenPeople: () -> Unit,
+    friendRequests: Int,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableIntStateOf(FILTER_ALL) }
@@ -231,6 +241,7 @@ private fun ChatList(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                FilterChip(if (friendRequests > 0) "ЛЮДИ · +$friendRequests" else "ЛЮДИ", friendRequests > 0, accent = Mint) { onOpenPeople() }
                 FilterChip("ВСЕ", filter == FILTER_ALL) { filter = FILTER_ALL }
                 FilterChip("НЕПРОЧИТАННЫЕ", filter == FILTER_UNREAD) { filter = FILTER_UNREAD }
                 FilterChip("АРХИВ · $archivedCount", filter == FILTER_ARCHIVE) { filter = FILTER_ARCHIVE }
@@ -294,15 +305,15 @@ private fun TtlSheet(chat: Chat, onSet: (Int) -> Unit, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun FilterChip(label: String, active: Boolean, onClick: () -> Unit) {
+private fun FilterChip(label: String, active: Boolean, accent: Color = Cyan, onClick: () -> Unit) {
     Text(
         label,
-        color = if (active) Bg else Cyan,
+        color = if (active) Bg else accent,
         fontSize = 11.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = 1.sp,
         modifier = Modifier
-            .hudPanel(line = Cyan, fill = if (active) Cyan else Panel, cut = 7.dp, glow = active)
+            .hudPanel(line = accent, fill = if (active) accent else Panel, cut = 7.dp, glow = active)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
     )
@@ -373,6 +384,20 @@ private fun SearchField(query: String, hint: String, onChange: (String) -> Unit)
 /** Значок канала: у Авроры — кольцо с лисьими ушками, у Избранного — звезда. */
 @Composable
 private fun ChatBadge(chat: Chat, size: Int) {
+    val people = LocalPeople.current
+    val remote = when {
+        chat.peer.isNotBlank() -> people[chat.peer.lowercase()]
+        chat.id == SUPPORT_CHAT_ID -> people[com.zerospin.app.data.AURORA_LOGIN.lowercase()]
+        else -> null
+    }
+    if (remote != null || chat.peer.isNotBlank()) {
+        RemoteAvatar(
+            login = remote?.login ?: chat.peer, version = remote?.avatarV ?: 0, hasAvatar = remote?.hasAvatar == true,
+            size = size, letter = chat.name, color = if (chat.id == SUPPORT_CHAT_ID) Violet else Cyan,
+            team = remote?.team == true,
+        )
+        return
+    }
     Box(Modifier.size(size.dp)) {
     TargetRing(
         Modifier.size(size.dp),
@@ -484,6 +509,8 @@ private fun Conversation(
     typing: Boolean,
     onBack: () -> Unit,
     onOpenAuroraProfile: () -> Unit,
+    onOpenProfile: (String) -> Unit,
+    onRetry: (Int) -> Unit,
     onSend: (String, List<Attachment>, Int?) -> Unit,
     onEdit: (Int, String) -> Unit,
     onDelete: (Int) -> Unit,
@@ -618,7 +645,11 @@ private fun Conversation(
             }
             Spacer(Modifier.width(12.dp))
             // В поддержке шапка ведёт в профиль Авроры: аватар, статус, новости
-            val toProfile = if (chat.id == SUPPORT_CHAT_ID) Modifier.clickable(onClick = onOpenAuroraProfile) else Modifier
+            val toProfile = when {
+                chat.id == SUPPORT_CHAT_ID -> Modifier.clickable(onClick = onOpenAuroraProfile)
+                chat.peer.isNotBlank() -> Modifier.clickable { onOpenProfile(chat.peer) }
+                else -> Modifier
+            }
             Box(toProfile) { ChatBadge(chat, 36) }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f).then(toProfile)) {
@@ -644,6 +675,7 @@ private fun Conversation(
                             chat.id == SUPPORT_CHAT_ID && settings.zsWarnings > 0 -> "квантовый ИИ · Аврора · предупреждение ${settings.zsWarnings} из 2"
                             chat.id == SUPPORT_CHAT_ID -> "квантовый ИИ · Аврора · профиль ›"
                             chat.id == SAVED_CHAT_ID -> "сохранённое для себя"
+                            chat.peer.isNotBlank() -> "@${chat.peer} · профиль ›"
                             settings.showOnline -> "в сети"
                             else -> ""
                         } + if (chat.ttlSeconds > 0) " · ⏱ ${ttlLabel(chat.ttlSeconds)}" else "",
@@ -762,6 +794,7 @@ private fun Conversation(
                             is ListRow.Day -> DayChip(r.label)
                             is ListRow.Msg -> Bubble(
                                 message = r.message,
+                                peer = chat.peer.isNotBlank(),
                                 quoted = r.message.replyTo?.let { id -> messages.firstOrNull { it.id == id } },
                                 showRead = settings.readReceipts,
                                 highlight = if (searching) q else "",
@@ -984,14 +1017,16 @@ private fun Conversation(
                 add(HudAction("Открыть ссылку") { runCatching { uriHandler.openUri(url) } })
             }
             add(HudAction("Реакция") { reactionFor = m })
-            if (m.fromMe && m.forwardedFrom == null) {
+            if (m.failed) add(HudAction("Отправить ещё раз") { onRetry(m.id) })
+            // в личке правка ушла бы только к себе: там её нет
+            if (m.fromMe && m.forwardedFrom == null && chat.peer.isBlank()) {
                 add(HudAction("Изменить") {
                     editing = m
                     replyTo = null
                     draft = m.text
                 })
             }
-            add(HudAction("Удалить", danger = true) { onDelete(m.id) })
+            add(HudAction(if (chat.peer.isNotBlank()) "Удалить у себя" else "Удалить", danger = true) { onDelete(m.id) })
         }
         HudActionSheet(title = "Сообщение", actions = actions, onDismiss = { actionFor = null })
     }
@@ -1154,6 +1189,7 @@ private fun Bubble(
     onDoubleTap: () -> Unit,
     onQuoteClick: (Int) -> Unit,
     onSwipeReply: () -> Unit,
+    peer: Boolean = false,
 ) {
     val mine = message.fromMe
     var dragX by remember(message.id) { mutableFloatStateOf(0f) }
@@ -1240,7 +1276,14 @@ private fun Bubble(
                         fontSize = 10.sp,
                         fontFamily = HudMono,
                     )
-                    if (mine) {
+                    if (mine && peer) {
+                        // личка: часики, пока летит на сервер; галочка, когда дошло
+                        when {
+                            message.failed -> Text(" ! не отправлено", color = Red, fontSize = 10.sp)
+                            message.remoteId == 0 -> Text(" ◷", color = Muted, fontSize = 10.sp)
+                            else -> Text(" ✓", color = Mint, fontSize = 10.sp)
+                        }
+                    } else if (mine) {
                         val read = showRead && message.read
                         Text(
                             if (read) " ✓✓" else " ✓",

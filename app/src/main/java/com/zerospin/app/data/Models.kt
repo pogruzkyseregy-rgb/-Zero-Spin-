@@ -85,6 +85,8 @@ data class Chat(
     val archived: Boolean = false,
     /** Исчезающие сообщения: через сколько секунд удаляются, 0 — выключено */
     val ttlSeconds: Int = 0,
+    /** Личка с другом через сервер: его логин. Пусто — чат живёт только на телефоне */
+    val peer: String = "",
 )
 
 data class ChatMessage(
@@ -104,6 +106,10 @@ data class ChatMessage(
     val createdAt: Long = nowMillis(),
     /** Если сообщение переслано — от кого */
     val forwardedFrom: String? = null,
+    /** Номер на сервере (личка). 0 — ещё не отправлено или чат только на телефоне */
+    val remoteId: Int = 0,
+    /** Не ушло на сервер */
+    val failed: Boolean = false,
 )
 
 data class Note(
@@ -227,6 +233,10 @@ data class AppSettings(
     val serverRole: String = "",
     /** Человек выбрал «Позже» на экране входа: больше его не показываем, пока сам не откроет */
     val authSkipped: Boolean = false,
+    /** Личка: номер последнего сообщения, которое телефон уже забрал с сервера */
+    val syncAfter: Int = 0,
+    /** Входящие заявки в друзья */
+    val friendRequests: Int = 0,
 )
 
 /** Логин Авроры на сервере: её профиль и новости. */

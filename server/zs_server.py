@@ -10,6 +10,7 @@ import os
 import subprocess
 import time
 from collections import defaultdict
+from typing import Optional
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -17,6 +18,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 import zs_core as core
+import zs_social as social
 
 RELAY_URL = os.environ.get("RELAY_URL", "https://avrora-exe.ru/app-api").rstrip("/")
 PUBLIC_TOKEN = os.environ.get("PUBLIC_TOKEN", "")
@@ -25,6 +27,7 @@ DB_PATH = os.environ.get("ZS_DB", "zs.db")
 DB = core.connect(DB_PATH)
 MEDIA = os.path.join(os.path.dirname(os.path.abspath(DB_PATH)), "media")
 core.ensure_aurora(DB)
+social.init(DB)
 
 app = FastAPI(title="Zero Spin")
 log = logging.getLogger("uvicorn.error")
@@ -53,6 +56,21 @@ class SupportReq(BaseModel):
 
 class ImageReq(BaseModel):
     image: str          # картинка в base64
+
+
+class LoginReq(BaseModel):
+    login: str
+
+
+class DmReq(BaseModel):
+    text: str = ""
+    image: str = ""     # фото в base64, по желанию
+
+
+class ProfileReq(BaseModel):
+    name: Optional[str] = None
+    status: Optional[str] = None
+    bio: Optional[str] = None
 
 
 class NickReq(BaseModel):
@@ -226,3 +244,91 @@ def admin_aurora_avatar(req: ImageReq, authorization: str = Header(default="")):
     path = _wrap(lambda: core.save_image(data, MEDIA, "avatar"))
     core.event(DB, row["id"], row["login"], "aurora_avatar", os.path.basename(path))
     return _wrap(lambda: core.update_profile(DB, core.AURORA_LOGIN, avatar=path))
+
+
+# ---------- друзья, личные сообщения, свой профиль ----------
+
+def _me(authorization: str):
+    return _wrap(lambda: core.auth(DB, _bearer(authorization)))
+
+
+def _image_bytes(b64: str) -> bytes:
+    if len(b64) > core.MAX_IMAGE * 4 // 3 + 16:
+        raise HTTPException(413, "картинка больше 5 МБ")
+    try:
+        return base64.b64decode(b64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(400, "картинка не прочиталась")
+
+
+@app.get("/api/people/search")
+def people_search(q: str = "", authorization: str = Header(default="")):
+    return {"people": social.search(DB, _me(authorization), q)}
+
+
+@app.get("/api/people/{login}")
+def people_one(login: str, authorization: str = Header(default="")):
+    me = _me(authorization)
+    return _wrap(lambda: social.person(DB, me, login))
+
+
+@app.get("/api/friends")
+def friends_list(authorization: str = Header(default="")):
+    return social.friends(DB, _me(authorization))
+
+
+@app.post("/api/friends/request")
+def friends_request(req: LoginReq, authorization: str = Header(default="")):
+    me = _me(authorization)
+    return _wrap(lambda: social.request(DB, me, req.login))
+
+
+@app.post("/api/friends/accept")
+def friends_accept(req: LoginReq, authorization: str = Header(default="")):
+    me = _me(authorization)
+    return _wrap(lambda: social.accept(DB, me, req.login))
+
+
+@app.post("/api/friends/remove")
+def friends_remove(req: LoginReq, authorization: str = Header(default="")):
+    me = _me(authorization)
+    return _wrap(lambda: social.remove(DB, me, req.login))
+
+
+@app.post("/api/dm/{login}")
+def dm_send(login: str, req: DmReq, authorization: str = Header(default="")):
+    me = _me(authorization)
+    image = ""
+    if req.image:
+        # сначала права, потом файл: чужой не забьёт диск картинками
+        if _wrap(lambda: social.person(DB, me, login))["relation"] != "friends":
+            raise HTTPException(403, "писать можно только друзьям")
+        image = _wrap(lambda: core.save_image(_image_bytes(req.image), os.path.join(MEDIA, "dm"), "dm"))
+    return _wrap(lambda: social.send(DB, me, login, req.text, image))
+
+
+@app.get("/api/sync")
+def sync(after: int = 0, authorization: str = Header(default="")):
+    return social.sync(DB, _me(authorization), after)
+
+
+@app.get("/api/dm-image/{msg_id}")
+def dm_image(msg_id: int, authorization: str = Header(default="")):
+    me = _me(authorization)
+    path = _wrap(lambda: social.dm_image(DB, me, msg_id))
+    if not os.path.exists(path):
+        raise HTTPException(404, "нет картинки")
+    return FileResponse(path, headers={"Cache-Control": "private, max-age=86400"})
+
+
+@app.post("/api/me/profile")
+def me_profile(req: ProfileReq, authorization: str = Header(default="")):
+    me = _me(authorization)
+    return _wrap(lambda: social.update_me(DB, me, name=req.name, status=req.status, bio=req.bio))
+
+
+@app.post("/api/me/avatar")
+def me_avatar(req: ImageReq, authorization: str = Header(default="")):
+    me = _me(authorization)
+    path = _wrap(lambda: core.save_image(_image_bytes(req.image), MEDIA, "avatar"))
+    return _wrap(lambda: social.update_me(DB, me, avatar=path))
