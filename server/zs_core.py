@@ -182,8 +182,31 @@ def history(db, uid: str, limit: int = 200) -> list[dict]:
     return [dict(r) | {"flag": bool(r["flag"])} for r in reversed(rows)]
 
 
+MAX_IMAGE = 5_000_000
+IMAGE_MAGIC = {b"\xff\xd8\xff": ".jpg", b"\x89PNG": ".png", b"GIF8": ".gif", b"RIFF": ".webp"}
+
+
+def image_ext(data: bytes):
+    """Расширение по первым байтам файла или None, если это не картинка."""
+    return next((e for m, e in IMAGE_MAGIC.items() if data.startswith(m) and (e != ".webp" or data[8:12] == b"WEBP")), None)
+
+
+def save_image(data: bytes, media: str, prefix: str) -> str:
+    if len(data) > MAX_IMAGE:
+        raise ZsError(413, "картинка больше 5 МБ")
+    ext = image_ext(data[:12])
+    if not ext:
+        raise ZsError(400, "это не картинка (нужен jpg, png, webp или gif)")
+    os.makedirs(media, exist_ok=True)
+    path = os.path.join(media, f"{prefix}_{int(time.time() * 1000)}{ext}")
+    with open(path, "wb") as f:
+        f.write(data)
+    return path
+
+
 def support(db, row, text: str, ask) -> dict:
-    """ask(history, text, warnings, user_id, login) -> (reply, flag, reason): вызов публичной Авроры."""
+    """ask(history, text, warnings, user_id, login, role) -> (reply, flag, reason): вызов публичной Авроры.
+    Админу (Адонису) предупреждения не ставятся: его она узнаёт и не банит."""
     if row["banned"]:
         raise ZsError(403, "Аврора больше не отвечает тебе")
     text = text.strip()
@@ -195,7 +218,9 @@ def support(db, row, text: str, ask) -> dict:
     if n >= MSG_LIMIT:
         raise ZsError(429, "слишком часто, подожди несколько минут")
     hist = [{"role": "user" if h["role"] == "user" else "assistant", "content": h["text"]} for h in history(db, row["id"], HISTORY)]
-    reply, flag, reason = ask(hist, text, row["warnings"], row["id"], row["login"])
+    reply, flag, reason = ask(hist, text, row["warnings"], row["id"], row["login"], row["role"])
+    if row["role"] == "admin":
+        flag, reason = False, ""
     now = time.time()
     db.execute("insert into support(user_id,role,text,at,flag) values(?,?,?,?,?)", (row["id"], "user", text, now, 1 if flag else 0))
     db.execute("insert into support(user_id,role,text,at) values(?,?,?,?)", (row["id"], "assistant", reply, now + 0.001))

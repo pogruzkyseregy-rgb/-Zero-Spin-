@@ -2,6 +2,8 @@
 Веб-часть сервера Zero Spin. Запуск: uvicorn zs_server:app --host 127.0.0.1 --port 8077
 Настройки в /etc/zs-server.env: RELAY_URL, PUBLIC_TOKEN, ADMIN_TOKEN, ZS_DB.
 """
+import base64
+import binascii
 import json
 import logging
 import os
@@ -19,7 +21,9 @@ import zs_core as core
 RELAY_URL = os.environ.get("RELAY_URL", "https://avrora-exe.ru/app-api").rstrip("/")
 PUBLIC_TOKEN = os.environ.get("PUBLIC_TOKEN", "")
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
-DB = core.connect(os.environ.get("ZS_DB", "zs.db"))
+DB_PATH = os.environ.get("ZS_DB", "zs.db")
+DB = core.connect(DB_PATH)
+MEDIA = os.path.join(os.path.dirname(os.path.abspath(DB_PATH)), "media")
 core.ensure_aurora(DB)
 
 app = FastAPI(title="Zero Spin")
@@ -45,6 +49,10 @@ class AuthReq(BaseModel):
 
 class SupportReq(BaseModel):
     text: str
+
+
+class ImageReq(BaseModel):
+    image: str          # картинка в base64
 
 
 class NickReq(BaseModel):
@@ -78,9 +86,10 @@ def _post_curl(url: str, payload: dict) -> "_Resp":
 _client = httpx.Client(http2=True, timeout=90)
 
 
-def ask_aurora(hist, text, warnings, uid, nick):
+def ask_aurora(hist, text, warnings, uid, nick, role="user"):
     url = f"{RELAY_URL}/public"
-    payload = {"user": uid, "nick": nick, "messages": hist, "text": text, "warnings": warnings}
+    # role приходит из базы этого сервера; relay доверяет ему, потому что запрос подписан PUBLIC_TOKEN
+    payload = {"user": uid, "nick": nick, "messages": hist, "text": text, "warnings": warnings, "role": role}
     try:
         r = _client.post(url, headers={"Authorization": f"Bearer {PUBLIC_TOKEN}"}, json=payload)
     except httpx.HTTPError as e:
@@ -200,3 +209,20 @@ def admin_users(authorization: str = Header(default="")):
 def admin_unban(req: NickReq, authorization: str = Header(default="")):
     _admin(authorization)
     return _wrap(lambda: core.unban(DB, req.login or req.nick))
+
+
+@app.post("/api/admin/aurora-avatar")
+def admin_aurora_avatar(req: ImageReq, authorization: str = Header(default="")):
+    """Команда «!аватар» из чата с Авророй: админ присылает фото, оно становится её аватаром."""
+    row = _wrap(lambda: core.auth(DB, _bearer(authorization)))
+    if row["role"] != "admin":
+        raise HTTPException(403, "только для админа")
+    if len(req.image) > core.MAX_IMAGE * 4 // 3 + 16:
+        raise HTTPException(413, "картинка больше 5 МБ")
+    try:
+        data = base64.b64decode(req.image, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(400, "картинка не прочиталась")
+    path = _wrap(lambda: core.save_image(data, MEDIA, "avatar"))
+    core.event(DB, row["id"], row["login"], "aurora_avatar", os.path.basename(path))
+    return _wrap(lambda: core.update_profile(DB, core.AURORA_LOGIN, avatar=path))

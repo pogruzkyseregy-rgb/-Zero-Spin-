@@ -40,6 +40,8 @@ import com.zerospin.app.data.AppSettings
 import com.zerospin.app.data.ZsException
 import com.zerospin.app.data.ZsServer
 import com.zerospin.app.data.ZsSession
+import com.zerospin.app.data.AttachKind
+import com.zerospin.app.data.squareAvatarJpeg
 import com.zerospin.app.ui.screens.AuthScreen
 import com.zerospin.app.ui.screens.AuroraProfileScreen
 import kotlinx.coroutines.launch
@@ -257,6 +259,39 @@ fun ZeroSpinApp() {
         setSettings { it.copy(serverToken = "", serverNick = "", serverRole = "", zsWarnings = 0, zsBanned = false, zsBanReason = "") }
     }
 
+    /** «!аватар» + фото в чате с Авророй: только с аккаунта админа. Фото сразу становится её аватаром. */
+    suspend fun setAuroraAvatar(attachments: List<Attachment>) {
+        val s = store.settings.value
+        val token = ensureAccount() ?: return
+        if (s.serverRole != "admin") {
+            deliverIncoming(SUPPORT_CHAT_ID, "«!аватар» работает только с аккаунта админа.")
+            return
+        }
+        val photo = attachments.firstOrNull { it.kind == AttachKind.IMAGE }
+        if (photo == null) {
+            deliverIncoming(SUPPORT_CHAT_ID, "Прикрепи фото к «!аватар», тогда поставлю.")
+            return
+        }
+        typingChat = SUPPORT_CHAT_ID
+        try {
+            val jpeg = squareAvatarJpeg(context, photo.uri)
+            if (jpeg == null) {
+                deliverIncoming(SUPPORT_CHAT_ID, "Не смогла прочитать это фото. Попробуй другое.")
+                return
+            }
+            ZsServer.setAuroraAvatar(s.serverUrl, token, jpeg)
+            deliverIncoming(SUPPORT_CHAT_ID, "✓ Новый аватар стоит. Посмотреть: нажми на шапку чата.")
+        } catch (e: ZsException) {
+            if (e.code == 401) {
+                setSettings { it.copy(serverToken = "", serverRole = "") }
+                showAuth = true
+            }
+            deliverIncoming(SUPPORT_CHAT_ID, "Аватар не сменился: ${e.message}")
+        } finally {
+            typingChat = null
+        }
+    }
+
     /** Живая Аврора: ответ, предупреждения и бан решает сервер, приложение только показывает. */
     suspend fun askSupport(text: String) {
         val s0 = store.settings.value
@@ -329,7 +364,8 @@ fun ZeroSpinApp() {
             replyTo = replyTo,
         )
         if (chatId == SUPPORT_CHAT_ID) {
-            scope.launch { askSupport(text) }
+            if (text.trim().lowercase().startsWith("!аватар")) scope.launch { setAuroraAvatar(attachments) }
+            else scope.launch { askSupport(text) }
         }
     }
 

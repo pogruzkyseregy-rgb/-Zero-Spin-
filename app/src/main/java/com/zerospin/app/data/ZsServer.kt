@@ -93,6 +93,12 @@ object ZsServer {
         }
     }
 
+    /** Команда «!аватар»: админ ставит Авроре новый аватар. Картинка уже сжата в JPEG. */
+    suspend fun setAuroraAvatar(base: String, token: String, jpeg: ByteArray) {
+        val b64 = android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP)
+        call(base, "/api/admin/aurora-avatar", "POST", token, JSONObject().put("image", b64))
+    }
+
     /** Картинка с сервера (аватар, фото новости). null, если её нет или нет связи. */
     suspend fun image(base: String, path: String): android.graphics.Bitmap? = withContext(Dispatchers.IO) {
         runCatching {
@@ -108,4 +114,32 @@ object ZsServer {
         return ZsReply(j.optString("reply", "…"), j.optBoolean("warned"), j.optString("reason"), j.optInt("warnings"),
             j.optBoolean("banned"), j.optInt("warn_limit", 2))
     }
+}
+
+/**
+ * Фото с телефона → квадратный JPEG для аватара. Вертикальное фото режется ближе к верху,
+ * где обычно лицо. null, если картинку не удалось прочитать.
+ */
+suspend fun squareAvatarJpeg(context: android.content.Context, uri: String, size: Int = 512): ByteArray? = withContext(Dispatchers.IO) {
+    runCatching {
+        val u = android.net.Uri.parse(uri)
+        val r = context.contentResolver
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        r.openInputStream(u)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+        var sample = 1
+        while (minOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= size) sample *= 2
+        val src = r.openInputStream(u)?.use {
+            android.graphics.BitmapFactory.decodeStream(it, null, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+        } ?: return@runCatching null
+        val side = minOf(src.width, src.height)
+        val x = (src.width - side) / 2
+        val y = ((src.height - side) * 0.2f).toInt()
+        val square = android.graphics.Bitmap.createBitmap(src, x, y, side, side)
+        val out = android.graphics.Bitmap.createScaledBitmap(square, size, size, true)
+        java.io.ByteArrayOutputStream().use { bos ->
+            out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, bos)
+            bos.toByteArray()
+        }
+    }.getOrNull()
 }

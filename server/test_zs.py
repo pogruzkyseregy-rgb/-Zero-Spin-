@@ -38,8 +38,8 @@ s2 = core.login(db, "Vasya_1", "secret12")["token"]
 core.logout(db, s2)
 check("выход закрывает только свою сессию", err(lambda: core.auth(db, s2)) == 401 and core.auth(db, a["token"])["login"] == "Vasya_1")
 
-calm = lambda h, t, w, u, n: ("Ник меняется в профиле.", False, "")
-angry = lambda h, t, w, u, n: ("Граница.", True, "угрожал")
+calm = lambda h, t, w, u, n, r="user": ("Ник меняется в профиле.", False, "")
+angry = lambda h, t, w, u, n, r="user": ("Граница.", True, "угрожал")
 r = core.support(db, row, "как сменить ник", calm)
 check("обычный ответ", r["reply"] == "Ник меняется в профиле." and not r["banned"])
 r = core.support(db, core.auth(db, a["token"]), "угроза", angry)
@@ -69,6 +69,20 @@ o.execute("insert into users(id,nick,name,token_hash,created) values('u1','oldni
 o.commit(); o.close()
 db2 = core.connect(old)
 check("старый аккаунт переезжает и вход по ключу работает", core.auth(db2, "tok")["login"] == "oldnick")
+# админа она узнаёт: роль уходит в вызов, предупреждений ему не бывает
+seen = {}
+def spy(h, t, w, u, n, r="user"):
+    seen["role"] = r
+    return ("Привет, Адонис.", True, "показалось")
+
+ra = core.support(db, core.auth(db, core.login(db, "adonis_av", "test-pass-1")["token"]), "привет", spy)
+check("Аврора получает роль админа", seen.get("role") == "admin")
+check("админу не ставят предупреждение", not ra["warned"] and ra["warnings"] == 0 and not ra["banned"])
+png = b"\x89PNG\r\n\x1a\n" + b"0" * 20
+pth = core.save_image(png, os.path.join(T, "media"), "avatar")
+check("картинка сохраняется", pth.endswith(".png") and os.path.getsize(pth) == len(png))
+check("не картинку не принимает", err(lambda: core.save_image(b"hello world!", os.path.join(T, "media"), "x")) == 400)
+
 core.ensure_aurora(db2)
 check("на старой базе появляется Аврора", core.profile(db2, "Avrora_AV")["role"] == "aurora")
 check("на старой базе работает регистрация", "token" in core.register(db2, "newbie", "secret-1"))

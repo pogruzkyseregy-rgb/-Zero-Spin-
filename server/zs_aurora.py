@@ -17,8 +17,7 @@ sys.path.insert(0, HERE)
 import zs_core as core
 
 MEDIA = os.path.join(HERE, "media")
-MAX_IMAGE = 5_000_000
-MAGIC = {b"\xff\xd8\xff": ".jpg", b"\x89PNG": ".png", b"GIF8": ".gif", b"RIFF": ".webp"}
+MAX_IMAGE = core.MAX_IMAGE
 
 db = core.connect(os.environ.get("ZS_DB", os.path.join(HERE, "zs.db")))
 core.ensure_aurora(db)
@@ -37,8 +36,7 @@ def take_image(src: str, prefix: str) -> str:
         sys.exit("нет такого файла: " + src)
     if os.path.getsize(src) > MAX_IMAGE:
         sys.exit("картинка больше 5 МБ")
-    head = open(src, "rb").read(12)
-    ext = next((e for m, e in MAGIC.items() if head.startswith(m) and (e != ".webp" or head[8:12] == b"WEBP")), None)
+    ext = core.image_ext(open(src, "rb").read(12))
     if not ext:
         sys.exit("это не картинка (нужен jpg, png, webp или gif)")
     dst = os.path.join(MEDIA, f"{prefix}_{int(time.time())}{ext}")
