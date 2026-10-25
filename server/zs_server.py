@@ -5,6 +5,8 @@
 import os, time
 from collections import defaultdict
 
+import logging
+
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel
@@ -17,6 +19,7 @@ ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 DB = core.connect(os.environ.get("ZS_DB", "zs.db"))
 
 app = FastAPI(title="Zero Spin")
+log = logging.getLogger("uvicorn.error")
 _reg_by_ip: dict[str, list[float]] = defaultdict(list)
 
 
@@ -45,11 +48,25 @@ class NickReq(BaseModel):
 
 
 def ask_aurora(hist, text, warnings, uid, nick):
-    r = httpx.post(f"{RELAY_URL}/public", headers={"Authorization": f"Bearer {PUBLIC_TOKEN}"},
-                   json={"user": uid, "nick": nick, "messages": hist, "text": text, "warnings": warnings}, timeout=90)
+    try:
+        r = httpx.post(f"{RELAY_URL}/public", headers={"Authorization": f"Bearer {PUBLIC_TOKEN}"},
+                       json={"user": uid, "nick": nick, "messages": hist, "text": text, "warnings": warnings}, timeout=90)
+    except httpx.HTTPError as e:
+        log.error("relay unreachable: %r", e)
+        raise core.ZsError(502, "Аврора сейчас недоступна (нет связи с её сервером)")
+    if r.status_code == 401:
+        log.error("relay 401: PUBLIC_TOKEN не совпадает с relay.env")
+        raise core.ZsError(502, "Аврора сейчас недоступна (ключ сервера не принят)")
+    if r.status_code == 404:
+        log.error("relay 404: на основном сервере старый relay.py без /public")
+        raise core.ZsError(502, "Аврора сейчас недоступна (её сервер не обновлён)")
     if r.status_code != 200:
+        log.error("relay %s: %s", r.status_code, r.text[:300])
         raise core.ZsError(502, "Аврора сейчас не отвечает, попробуй позже")
-    j = r.json()
+    try:
+        j = r.json()
+    except ValueError:
+        raise core.ZsError(502, "Аврора ответила непонятно, попробуй ещё раз")
     return j.get("reply", "…"), bool(j.get("flag")), j.get("reason", "")
 
 
