@@ -108,6 +108,7 @@ fun RemoteAvatar(
         }
     }
     Box(modifier.size(size.dp)) {
+        if (!isAurora) com.zerospin.app.ui.hud.CosmeticBack(cosmetic, size)
         TargetRing(Modifier.size(size.dp), color = color, ears = isAurora) {
             val b = bmp
             if (b != null) {

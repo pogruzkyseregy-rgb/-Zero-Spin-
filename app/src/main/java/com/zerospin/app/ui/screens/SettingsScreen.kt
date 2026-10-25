@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.launch
 import androidx.compose.ui.window.DialogProperties
 import com.zerospin.app.data.AppSettings
 import com.zerospin.app.data.Profile
@@ -58,8 +59,13 @@ fun SettingsScreen(
     onDismiss: () -> Unit,
     onLogin: () -> Unit = {},
     onLogout: () -> Unit = {},
+    onAccountDeleted: () -> Unit = {},
 ) {
     var settingPin by remember { mutableStateOf(false) }
+    var showPrivacy by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
+    if (showPrivacy) PrivacyScreen(onDismiss = { showPrivacy = false })
+    if (deleting) DeleteAccountDialog(settings, onDone = { deleting = false; onAccountDeleted() }, onDismiss = { deleting = false })
     var pinMenu by remember { mutableStateOf(false) }
 
     if (settingPin) {
@@ -213,6 +219,9 @@ fun SettingsScreen(
                         androidx.compose.material3.TextButton(onClick = onLogin) { Text("Войти или зарегистрироваться", color = Cyan) }
                     } else {
                         androidx.compose.material3.TextButton(onClick = onLogout) { Text("Выйти из аккаунта", color = com.zerospin.app.ui.theme.Red) }
+                        androidx.compose.material3.TextButton(onClick = { deleting = true }) {
+                            Text("Удалить аккаунт…", color = Muted, fontSize = 12.sp)
+                        }
                     }
                 }
 
@@ -227,6 +236,16 @@ fun SettingsScreen(
                             Text("Zero Spin $version", color = TextMain, fontSize = 14.sp)
                             Text("Аврора · мессенджер круга", color = Muted, fontSize = 11.sp)
                         }
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().clickable { showPrivacy = true }.padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Политика конфиденциальности", color = TextMain, fontSize = 14.sp)
+                            Text("Что хранится, где и кто видит. С комментариями Авроры", color = Muted, fontSize = 11.sp)
+                        }
+                        Text("›", color = Cyan, fontSize = 20.sp)
                     }
                 }
                 Spacer(Modifier.height(24.dp))
@@ -266,6 +285,59 @@ private fun SwitchRow(
         }
         if (!last) {
             Box(Modifier.fillMaxWidth().height(1.dp).background(Cyan.copy(alpha = 0.12f)))
+        }
+    }
+}
+
+
+/** Удаление аккаунта: пароль и честное предупреждение, что вернуть ничего нельзя. */
+@Composable
+private fun DeleteAccountDialog(settings: AppSettings, onDone: () -> Unit, onDismiss: () -> Unit) {
+    var password by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    Dialog(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxWidth().hudPanel(line = com.zerospin.app.ui.theme.Red, cut = 14.dp, glow = true).padding(16.dp)) {
+            Text("УДАЛИТЬ АККАУНТ @${settings.serverNick}", color = com.zerospin.app.ui.theme.Red, fontSize = 12.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "С сервера сотрутся профиль, аватар, друзья и вся личная переписка с фото — у тебя и у собеседников. " +
+                    "Вернуть нельзя.",
+                color = TextMain, fontSize = 13.sp,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text("«Подумай перед кнопкой». — Аврора", color = com.zerospin.app.ui.theme.Violet, fontSize = 12.sp,
+                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+            Spacer(Modifier.height(12.dp))
+            androidx.compose.material3.OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("Пароль", fontSize = 11.sp) },
+                singleLine = true,
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                colors = com.zerospin.app.ui.hud.hudFieldColors(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            error?.let { Text(it, color = com.zerospin.app.ui.theme.Red, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp)) }
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                com.zerospin.app.ui.hud.HudButton("Отмена", onClick = onDismiss, modifier = Modifier.weight(1f))
+                com.zerospin.app.ui.hud.HudButton(if (busy) "…" else "Удалить", onClick = {
+                    if (busy || password.isEmpty()) return@HudButton
+                    busy = true
+                    scope.launch {
+                        try {
+                            com.zerospin.app.data.ZsServer.deleteAccount(settings.serverUrl, settings.serverToken, password)
+                            onDone()
+                        } catch (e: com.zerospin.app.data.ZsException) {
+                            error = e.message
+                        } finally {
+                            busy = false
+                        }
+                    }
+                }, modifier = Modifier.weight(1f))
+            }
         }
     }
 }

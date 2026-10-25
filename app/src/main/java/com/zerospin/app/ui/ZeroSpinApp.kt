@@ -881,6 +881,11 @@ fun ZeroSpinApp() {
             onDismiss = { showSettings = false },
             onLogin = { showAuth = true },
             onLogout = { logout() },
+            onAccountDeleted = {
+                showSettings = false
+                logout()
+                Toast.makeText(context, "Аккаунт удалён", Toast.LENGTH_SHORT).show()
+            },
         )
     }
 

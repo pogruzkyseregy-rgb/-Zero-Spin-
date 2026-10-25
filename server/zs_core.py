@@ -40,7 +40,8 @@ USER_COLUMNS = {
 }
 
 # Украшения аватара для всех. Лисьи ушки сюда не входят: они только у Авроры.
-COSMETICS = ("", "halo", "demon", "orbit", "hat", "crown", "stars")
+COSMETICS = ("", "halo", "demon", "orbit", "hat", "crown", "stars", "sparkle", "comet", "crown2", "starcrown",
+             "thornhalo", "thorns", "eclipse", "radiation", "dna", "claws", "glitch404", "loser")
 
 
 class ZsError(Exception):

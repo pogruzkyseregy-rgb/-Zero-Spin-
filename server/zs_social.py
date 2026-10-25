@@ -2,6 +2,7 @@
 Друзья и личные сообщения Zero Spin. Без веба: его проверяют тесты (test_zs.py), вызывает zs_server.py.
 Писать в личку можно только друзьям: сначала заявка, потом переписка. Так в мессенджер для своих не пишут чужие.
 """
+import os
 import time
 import zlib
 
@@ -189,3 +190,26 @@ def update_me(db, me, name=None, status=None, bio=None, avatar=None, cosmetic=No
         name = me["login"]
     core.update_profile(db, me["login"], name=name, status=status, bio=bio, avatar=avatar, cosmetic=cosmetic)
     return card(_user(db, me["login"]))
+
+
+def delete_account(db, me, password: str) -> dict:
+    """Удалить аккаунт насовсем: профиль, вход, друзья, личка (у обоих), поддержка, аватар и фото."""
+    if me["role"] == "aurora":
+        raise ZsError(403, "аккаунт Авроры не удаляется")
+    if not core.check_password(password or "", me["pass_hash"]):
+        raise ZsError(401, "неверный пароль")
+    files = [r["image"] for r in db.execute("select image from dm where (a=? or b=?) and image!=''", (me["id"], me["id"]))]
+    if me["avatar"]:
+        files.append(me["avatar"])
+    for sql in ("delete from sessions where user_id=?", "delete from friends where a=? or b=?", "delete from dm where a=? or b=?",
+                "delete from support where user_id=?", "delete from events where user_id=?", "delete from users where id=?"):
+        db.execute(sql, (me["id"],) * sql.count("?"))
+    db.execute("delete from login_fail where login_key=?", (me["login_key"],))
+    removed = 0
+    for f in files:
+        try:
+            os.remove(f)
+            removed += 1
+        except OSError:
+            pass
+    return {"deleted": True, "files": removed}

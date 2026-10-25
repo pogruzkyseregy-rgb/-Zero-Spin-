@@ -173,6 +173,11 @@ object ZsServer {
         return person(call(base, "/api/me/avatar", "POST", token, JSONObject().put("image", b64)))
     }
 
+    /** Удалить аккаунт насовсем. Нужен пароль. */
+    suspend fun deleteAccount(base: String, token: String, password: String) {
+        call(base, "/api/me/delete", "POST", token, JSONObject().put("password", password))
+    }
+
     /** Скачать файл с сервера (фото из лички) на телефон. true, если получилось. */
     suspend fun download(base: String, token: String, path: String, file: java.io.File): Boolean = withContext(Dispatchers.IO) {
         runCatching {

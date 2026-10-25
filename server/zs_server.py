@@ -67,6 +67,10 @@ class DmReq(BaseModel):
     image: str = ""     # фото в base64, по желанию
 
 
+class PasswordReq(BaseModel):
+    password: str
+
+
 class ProfileReq(BaseModel):
     name: Optional[str] = None
     status: Optional[str] = None
@@ -333,3 +337,10 @@ def me_avatar(req: ImageReq, authorization: str = Header(default="")):
     me = _me(authorization)
     path = _wrap(lambda: core.save_image(_image_bytes(req.image), MEDIA, "avatar"))
     return _wrap(lambda: social.update_me(DB, me, avatar=path))
+
+
+@app.post("/api/me/delete")
+def me_delete(req: PasswordReq, authorization: str = Header(default="")):
+    """Удаление аккаунта: нужен пароль, чтобы чужой с телефона в руках не стёр всё одним нажатием."""
+    me = _me(authorization)
+    return _wrap(lambda: social.delete_account(DB, me, req.password))

@@ -132,5 +132,28 @@ db.execute("update users set banned=1 where id=?", (banned_u["id"],))
 check("забаненного Аврора в друзья не берёт", err(lambda: social.request(db, core.auth(db, core.login(db, "bad_guy", "secret-1")["token"]), "Avrora_AV")) == 403)
 check("отклонить заявку", social.remove(db, ann, "eve_x")["relation"] == "none" and social.sync(db, ann)["incoming"] == 0)
 
+# удаление аккаунта
+gone = U("gone_soon")
+social.request(db, gone, "bob_r"); social.request(db, bob, "gone_soon")
+gimg = core.save_image(b"\xff\xd8\xff" + b"1" * 20, os.path.join(T, "media", "dm"), "dm")
+social.send(db, gone, "bob_r", "пока", gimg)
+check("без пароля аккаунт не удалить", err(lambda: social.delete_account(db, gone, "wrong")) == 401)
+r = social.delete_account(db, gone, "secret-1")
+check("аккаунт удаляется вместе с перепиской и фото", r["deleted"] and not os.path.exists(gimg)
+      and db.execute("select count(*) from users where login_key='gone_soon'").fetchone()[0] == 0
+      and all(m["from"] != "gone_soon" for m in social.sync(db, bob)["messages"])
+      and "gone_soon" not in [f["login"] for f in social.friends(db, bob)["friends"]])
+check("логин после удаления снова свободен", "token" in core.register(db, "gone_soon", "secret-2"))
+check("аккаунт Авроры не удалить", err(lambda: social.delete_account(db, db.execute("select * from users where login_key='avrora_av'").fetchone(), "x")) == 403)
+
+# украшения в приложении и на сервере совпадают (проверка только в репозитории, где есть код приложения)
+kt = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app", "src", "main", "java", "com", "zerospin", "app", "ui", "hud", "Cosmetics.kt")
+if os.path.exists(kt):
+    import re as _re
+    src = open(kt, encoding="utf-8").read()
+    block = src[src.index("AvatarCosmetics"):src.index("BackCosmetics")]
+    ids = _re.findall(r'"([a-z0-9]*)" to "', block)
+    check("украшения в приложении и на сервере одни и те же", tuple(ids) == core.COSMETICS, ids)
+
 print(f"\nИТОГ: ок {ok}, нет {bad}")
 sys.exit(1 if bad else 0)

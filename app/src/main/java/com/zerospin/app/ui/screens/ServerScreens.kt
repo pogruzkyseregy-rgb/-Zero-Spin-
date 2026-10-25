@@ -159,10 +159,15 @@ fun AuthScreen(serverUrl: String, onDone: (ZsSession) -> Unit, onSkip: () -> Uni
             Spacer(Modifier.height(10.dp))
             Text("Позже", color = Muted, fontSize = 12.sp, modifier = Modifier.clickable(onClick = onSkip))
             Spacer(Modifier.height(18.dp))
+            var showPrivacy by remember { mutableStateOf(false) }
+            if (showPrivacy) PrivacyScreen(onDismiss = { showPrivacy = false })
             Text(
-                "Разговоры с Авророй в поддержке хранятся на сервере Zero Spin и видны администратору.",
+                if (register) "Создавая аккаунт, ты соглашаешься с политикой конфиденциальности. Её стоит прочитать: она короткая и честная."
+                else "Что хранится на сервере и кто это видит — в политике конфиденциальности.",
                 color = Muted, fontSize = 11.sp,
             )
+            Text("Политика конфиденциальности ›", color = Violet, fontSize = 12.sp,
+                modifier = Modifier.clickable { showPrivacy = true }.padding(vertical = 8.dp))
         }
     }
     }

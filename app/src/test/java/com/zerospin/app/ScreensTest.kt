@@ -110,20 +110,21 @@ class ScreensTest {
         rule.setContent {
             ZeroSpinTheme {
                 androidx.compose.foundation.layout.Column(
-                    androidx.compose.ui.Modifier.fillMaxSize().background(com.zerospin.app.ui.theme.Bg).padding(24.dp),
-                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(36.dp),
+                    androidx.compose.ui.Modifier.fillMaxSize().background(com.zerospin.app.ui.theme.Bg).padding(horizontal = 12.dp, vertical = 30.dp),
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(26.dp),
                 ) {
-                    com.zerospin.app.ui.hud.AvatarCosmetics.chunked(3).forEach { row ->
-                        androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)) {
+                    com.zerospin.app.ui.hud.AvatarCosmetics.chunked(4).forEach { row ->
+                        androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
                             row.forEach { (id, title) ->
-                                androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.width(100.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
-                                    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.size(84.dp)) {
-                                        com.zerospin.app.ui.hud.TargetRing(androidx.compose.ui.Modifier.size(84.dp)) {
+                                androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.width(84.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                                    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.size(72.dp)) {
+                                        com.zerospin.app.ui.hud.CosmeticBack(id, 72)
+                                        com.zerospin.app.ui.hud.TargetRing(androidx.compose.ui.Modifier.size(72.dp)) {
                                             androidx.compose.material3.Text("A", color = com.zerospin.app.ui.theme.Cyan)
                                         }
-                                        com.zerospin.app.ui.hud.CosmeticOverlay(id, 84)
+                                        com.zerospin.app.ui.hud.CosmeticOverlay(id, 72)
                                     }
-                                    androidx.compose.material3.Text(title, color = com.zerospin.app.ui.theme.Muted)
+                                    androidx.compose.material3.Text(title, color = com.zerospin.app.ui.theme.Muted, fontSize = androidx.compose.ui.unit.TextUnit(11f, androidx.compose.ui.unit.TextUnitType.Sp), maxLines = 1)
                                 }
                             }
                         }
@@ -142,6 +143,15 @@ class ScreensTest {
         settle()
         rule.onRoot().performTouchInput { swipeUp() }
         shot("7_profile_edit")
+    }
+
+    @OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
+    @Test
+    fun privacy() {
+        rule.mainClock.autoAdvance = false
+        rule.setContent { ZeroSpinTheme { com.zerospin.app.ui.screens.PrivacyScreen(onDismiss = {}) } }
+        settle()
+        com.github.takahirom.roborazzi.captureScreenRoboImage("build/outputs/roborazzi/8_privacy.png")
     }
 
     @Test

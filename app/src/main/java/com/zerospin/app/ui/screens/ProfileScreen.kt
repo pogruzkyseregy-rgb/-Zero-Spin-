@@ -538,6 +538,7 @@ private fun Avatar(profile: Profile, onPick: () -> Unit, modifier: Modifier = Mo
     val photo = profile.avatarUri?.let { rememberThumb(it, 512) }
     // Значок AV в углу аватара: аккаунт команды (админ)
     Box(modifier.size(104.dp)) {
+    com.zerospin.app.ui.hud.CosmeticBack(profile.cosmetic, 104)
     TargetRing(Modifier.size(104.dp).then(if (banned) Modifier.bannedGlitch() else Modifier).clickable(onClick = onPick)) {
         if (photo != null) {
             Image(
@@ -575,6 +576,7 @@ private fun CosmeticPicker(selected: String, letter: String, onPick: (String) ->
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Box(Modifier.size(52.dp)) {
+                    com.zerospin.app.ui.hud.CosmeticBack(id, 52)
                     TargetRing(Modifier.size(52.dp), color = if (active) com.zerospin.app.ui.theme.Mint else Cyan) {
                         Text(letter.take(1).uppercase(), color = Cyan, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     }
