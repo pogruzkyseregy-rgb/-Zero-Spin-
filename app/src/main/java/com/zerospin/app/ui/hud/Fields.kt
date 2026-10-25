@@ -1,6 +1,8 @@
 package com.zerospin.app.ui.hud
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -160,3 +162,23 @@ fun HudActionSheet(
 }
 
 data class HudAction(val label: String, val danger: Boolean = false, val onClick: () -> Unit)
+
+
+/** Переключатель-«таблетка» для фильтров: светится заливкой, когда выбран. */
+@Composable
+fun HudChip(label: String, active: Boolean, accent: androidx.compose.ui.graphics.Color = Cyan, onClick: () -> Unit) {
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(50)
+    Text(
+        label,
+        color = if (active) Bg else accent,
+        fontSize = 11.sp,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+        letterSpacing = 1.sp,
+        modifier = Modifier
+            .clip(shape)
+            .background(if (active) accent else accent.copy(alpha = 0.08f), shape)
+            .border(1.dp, accent.copy(alpha = if (active) 1f else 0.35f), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 7.dp),
+    )
+}

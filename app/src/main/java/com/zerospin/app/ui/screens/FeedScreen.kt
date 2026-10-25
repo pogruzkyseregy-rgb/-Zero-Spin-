@@ -141,38 +141,52 @@ fun FeedScreen(
             )
         }
         item {
-            Column(Modifier.fillMaxWidth().hudPanel(cut = 12.dp).padding(12.dp)) {
-                HudTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    label = "Новая запись",
-                    placeholder = "Что нового в круге?",
-                    singleLine = false,
-                    minLines = 2,
-                    maxLength = 1000,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                if (pending.isNotEmpty()) {
-                    Spacer(Modifier.height(10.dp))
-                    AttachmentList(pending, onRemove = { i -> pending = pending.filterIndexed { idx, _ -> idx != i } })
-                }
-                Spacer(Modifier.height(10.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    HudButton(text = "+ Фото", onClick = pickPhoto, modifier = Modifier.weight(1f))
-                    HudButton(text = "+ Файл", onClick = pickFile, modifier = Modifier.weight(1f))
-                    HudButton(
-                        text = "Пуск",
-                        onClick = {
-                            if (draft.isNotBlank() || pending.isNotEmpty()) {
+            // Новая запись: одна строка, как в мессенджерах; растёт, пока пишешь
+            var attachMenu by remember { mutableStateOf(false) }
+            val canSend = draft.isNotBlank() || pending.isNotEmpty()
+            Column(Modifier.fillMaxWidth().hudPanel(cut = 12.dp).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                        if (draft.isEmpty()) Text("Что нового в круге?", color = Muted, fontSize = 15.sp)
+                        BasicTextField(
+                            value = draft,
+                            onValueChange = { if (it.length <= 1000) draft = it },
+                            maxLines = 8,
+                            textStyle = TextStyle(color = TextMain, fontSize = 15.sp),
+                            cursorBrush = SolidColor(Cyan),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        Modifier.size(38.dp).clip(CircleShape).background(Cyan.copy(alpha = 0.10f)).clickable { attachMenu = true },
+                        contentAlignment = Alignment.Center,
+                    ) { Text("+", color = Cyan, fontSize = 22.sp) }
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        Modifier.size(38.dp).clip(CircleShape)
+                            .background(if (canSend) Brush.linearGradient(listOf(Violet, Cyan, Mint)) else Brush.linearGradient(listOf(Panel, Panel)))
+                            .clickable(enabled = canSend) {
                                 onPublish(draft.trim(), pending)
                                 draft = ""
                                 pending = emptyList()
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        primary = true,
-                    )
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) { Text("➤", color = if (canSend) Bg else Muted, fontSize = 16.sp) }
                 }
+                if (draft.length > 800) Text("${draft.length}/1000", color = Muted, fontSize = 11.sp, modifier = Modifier.align(Alignment.End))
+                if (pending.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    AttachmentList(pending, onRemove = { i -> pending = pending.filterIndexed { idx, _ -> idx != i } })
+                    Spacer(Modifier.height(4.dp))
+                }
+            }
+            if (attachMenu) {
+                HudActionSheet(
+                    title = "Добавить к записи",
+                    actions = listOf(HudAction("Фото и видео") { pickPhoto() }, HudAction("Файл") { pickFile() }),
+                    onDismiss = { attachMenu = false },
+                )
             }
         }
         item {
@@ -245,19 +259,8 @@ fun FeedScreen(
 }
 
 @Composable
-private fun FeedTab(label: String, active: Boolean, onClick: () -> Unit) {
-    Text(
-        label,
-        color = if (active) Bg else Cyan,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 1.sp,
-        modifier = Modifier
-            .hudPanel(line = Cyan, fill = if (active) Cyan else Panel, cut = 7.dp, glow = active)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-    )
-}
+private fun FeedTab(label: String, active: Boolean, onClick: () -> Unit) =
+    com.zerospin.app.ui.hud.HudChip(label, active, Cyan, onClick)
 
 // ---------------------------------------------------------------- Истории
 

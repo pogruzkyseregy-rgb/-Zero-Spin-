@@ -667,7 +667,8 @@ fun ZeroSpinApp() {
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
-                HudTopBar(
+                // В открытом чате своя шапка: общая только отнимала бы место
+                if (!(tab == 1 && openChat >= 0)) HudTopBar(
                     title = if (tab == 2 && section != NO_SECTION) section.uppercase() else tabs[tab].title,
                     status = if (typingChat != null) "АВРОРА ПЕЧАТАЕТ…" else "КАНАЛ СТАБИЛЕН · КРУГ",
                     onSettings = { showSettings = true },

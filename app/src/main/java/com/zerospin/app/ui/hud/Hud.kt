@@ -100,7 +100,7 @@ fun Modifier.hudPanel(
         val path = chamferPath(size, cut.toPx())
         if (brush != null) drawPath(path, brush) else drawPath(path, fill.copy(alpha = fill.alpha * 0.92f))
         if (glow) drawPath(path, line.copy(alpha = 0.18f), style = Stroke(width = 6.dp.toPx()))
-        drawPath(path, line.copy(alpha = 0.55f), style = Stroke(width = 1.dp.toPx()))
+        drawPath(path, line.copy(alpha = 0.38f), style = Stroke(width = 1.dp.toPx()))
         // Короткая яркая засечка на срезе: «неоновый» штрих, как на HUD
         val c = cut.toPx()
         drawLine(line, Offset(0f, c), Offset(c, 0f), strokeWidth = 1.6.dp.toPx())
@@ -529,7 +529,7 @@ fun HudTabBar(tabs: List<HudTab>, selected: Int, onSelect: (Int) -> Unit, badges
                         .background(if (active) fluoriteBrush() else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))),
                 )
                 Spacer(Modifier.height(6.dp))
-                Box(contentAlignment = Alignment.Center) {
+                Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
                     if (active) {
                         Box(
                             Modifier
@@ -546,9 +546,9 @@ fun HudTabBar(tabs: List<HudTab>, selected: Int, onSelect: (Int) -> Unit, badges
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .offset(x = 10.dp, y = (-4).dp)
-                                .background(Mint)
-                                .padding(horizontal = 4.dp),
+                                .offset(x = 6.dp, y = 0.dp)
+                                .background(Mint, androidx.compose.foundation.shape.RoundedCornerShape(50))
+                                .padding(horizontal = 5.dp, vertical = 1.dp),
                         )
                     }
                 }

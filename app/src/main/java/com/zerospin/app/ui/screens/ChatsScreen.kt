@@ -19,6 +19,7 @@ import com.zerospin.app.ui.components.VoiceRecorder
 import com.zerospin.app.ui.components.formatDuration
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -62,6 +63,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -233,20 +235,41 @@ private fun ChatList(
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        item { SearchField(query, "Поиск по чатам и сообщениям") { query = it } }
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { SearchField(query, "Поиск по чатам и сообщениям") { query = it } }
+                Spacer(Modifier.width(8.dp))
+                // Люди: поиск по логину, заявки и друзья
+                Box(
+                    Modifier.size(46.dp).hudPanel(line = Mint, cut = 9.dp, glow = friendRequests > 0).clickable(onClick = onOpenPeople),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    HudIcon(HudIconKind.PROFILE, Mint, Modifier.size(20.dp))
+                    Text("+", color = Mint, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(top = 3.dp, end = 6.dp))
+                    if (friendRequests > 0) {
+                        Text(
+                            friendRequests.toString(), color = Bg, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp)
+                                .background(Mint, androidx.compose.foundation.shape.RoundedCornerShape(50)).padding(horizontal = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
         item {
             Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                FilterChip(if (friendRequests > 0) "ЛЮДИ · +$friendRequests" else "ЛЮДИ", friendRequests > 0, accent = Mint) { onOpenPeople() }
                 FilterChip("ВСЕ", filter == FILTER_ALL) { filter = FILTER_ALL }
                 FilterChip("НЕПРОЧИТАННЫЕ", filter == FILTER_UNREAD) { filter = FILTER_UNREAD }
                 FilterChip("АРХИВ · $archivedCount", filter == FILTER_ARCHIVE) { filter = FILTER_ARCHIVE }
                 FilterChip("+ КАНАЛ", false) { creating = true }
             }
+            Spacer(Modifier.height(6.dp))
         }
         if (visible.isEmpty()) {
             item {
@@ -305,19 +328,8 @@ private fun TtlSheet(chat: Chat, onSet: (Int) -> Unit, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun FilterChip(label: String, active: Boolean, accent: Color = Cyan, onClick: () -> Unit) {
-    Text(
-        label,
-        color = if (active) Bg else accent,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 1.sp,
-        modifier = Modifier
-            .hudPanel(line = accent, fill = if (active) accent else Panel, cut = 7.dp, glow = active)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-    )
-}
+private fun FilterChip(label: String, active: Boolean, accent: Color = Cyan, onClick: () -> Unit) =
+    com.zerospin.app.ui.hud.HudChip(label, active, accent, onClick)
 
 @Composable
 private fun NewChatDialog(onCreate: (String) -> Unit, onDismiss: () -> Unit) {
@@ -418,24 +430,25 @@ private fun ChatBadge(chat: Chat, size: Int) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ChatRow(chat: Chat, last: ChatMessage?, typing: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
     Row(
         Modifier
             .fillMaxWidth()
-            .hudPanel(cut = 12.dp, line = if (chat.unread > 0) Mint else Cyan)
+            .clip(shape)
+            .background(if (chat.unread > 0) Mint.copy(alpha = 0.06f) else Color.Transparent, shape)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(12.dp),
+            .padding(horizontal = 6.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ChatBadge(chat, 44)
+        ChatBadge(chat, 52)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    chat.name.uppercase(),
-                    color = Cyan,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    letterSpacing = 1.sp,
+                    chat.name,
+                    color = TextMain,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
@@ -443,7 +456,12 @@ private fun ChatRow(chat: Chat, last: ChatMessage?, typing: Boolean, onClick: ()
                 if (chat.pinned) Text("  ◆", color = Violet, fontSize = 10.sp)
                 if (chat.muted) Text("  ⊘", color = Muted, fontSize = 11.sp)
                 if (chat.ttlSeconds > 0) Text("  ⏱", color = Magenta, fontSize = 10.sp)
+                Spacer(Modifier.weight(1f))
+                if (last != null) Text(last.time, color = if (chat.unread > 0) Mint else Muted, fontSize = 11.sp, fontFamily = HudMono)
             }
+            Spacer(Modifier.height(3.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) {
             when {
                 typing -> Row(verticalAlignment = Alignment.CenterVertically) {
                     PulseDot(Mint, Modifier.size(8.dp))
@@ -460,25 +478,24 @@ private fun ChatRow(chat: Chat, last: ChatMessage?, typing: Boolean, onClick: ()
                 else -> Text(
                     text = previewOf(last),
                     color = Muted,
-                    fontSize = 12.sp,
+                    fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-        }
-        Column(horizontalAlignment = Alignment.End) {
-            if (last != null) Text(last.time, color = Muted, fontSize = 10.sp, fontFamily = HudMono)
+            }
             if (chat.unread > 0) {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.width(8.dp))
                 Text(
                     chat.unread.toString(),
                     color = Bg,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier
-                        .background(if (chat.muted) Muted else Mint)
-                        .padding(horizontal = 6.dp, vertical = 1.dp),
+                        .background(if (chat.muted) Muted else Mint, androidx.compose.foundation.shape.RoundedCornerShape(50))
+                        .padding(horizontal = 7.dp, vertical = 1.dp),
                 )
+            }
             }
         }
     }
@@ -1228,18 +1245,23 @@ private fun Bubble(
                 mine -> Cyan
                 else -> Violet
             }
+            // Скруглённый пузырь с «хвостиком»: острый угол со стороны отправителя
+            val shape = androidx.compose.foundation.shape.RoundedCornerShape(
+                topStart = 18.dp, topEnd = 18.dp,
+                bottomStart = if (mine) 18.dp else 5.dp, bottomEnd = if (mine) 5.dp else 18.dp,
+            )
             Column(
                 Modifier
-                    .widthIn(max = 290.dp)
-                    .hudPanel(
-                        line = line,
-                        fill = PanelHi,
-                        cut = 10.dp,
-                        glow = flash,
-                        brush = if (mine) Brush.linearGradient(listOf(Color(0xFF0A2733), Color(0xFF1B1140))) else null,
+                    .widthIn(max = 300.dp)
+                    .clip(shape)
+                    .background(
+                        if (mine) Brush.linearGradient(listOf(Color(0xFF0D3440), Color(0xFF241552)))
+                        else Brush.linearGradient(listOf(PanelHi, PanelHi)),
+                        shape,
                     )
+                    .border(if (flash) 1.5.dp else 1.dp, line.copy(alpha = if (flash) 1f else 0.28f), shape)
                     .combinedClickable(onClick = {}, onDoubleClick = onDoubleTap, onLongClick = onLongClick)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 13.dp, vertical = 8.dp),
             ) {
                 if (message.forwardedFrom != null) {
                     Text("↪ Переслано от ${message.forwardedFrom}", color = Mint, fontSize = 10.sp, letterSpacing = 0.5.sp)
@@ -1268,7 +1290,7 @@ private fun Bubble(
                     Spacer(Modifier.height(6.dp))
                     AttachmentList(message.attachments)
                 }
-                Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.padding(top = 2.dp).align(Alignment.End), verticalAlignment = Alignment.CenterVertically) {
                     if (pinned) Text("◆ ", color = Violet, fontSize = 9.sp)
                     Text(
                         if (message.edited) "${message.time} · изм." else message.time,
