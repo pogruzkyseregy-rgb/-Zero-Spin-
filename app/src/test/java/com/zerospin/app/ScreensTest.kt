@@ -4,6 +4,14 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.zerospin.app.data.AppStore
@@ -37,7 +45,7 @@ class ScreensTest {
         store.settings.value = store.settings.value.copy(authSkipped = true, animatedBackground = false)
         store.profile.value = store.profile.value.copy(
             name = "Адонис", nick = "adonis", status = "Пишу код ночью", bio = "Делаю Zero Spin и Аврору.",
-            friends = listOf("anna_k", "bob_r"),
+            friends = listOf("anna_k", "bob_r"), cosmetic = "crown",
         )
         store.chats.add(Chat(5, "Анна", peer = "anna_k", unread = 2))
         store.messages[5] = listOf(
@@ -93,6 +101,46 @@ class ScreensTest {
         start()
         tap("ПРОФИЛЬ")
         shot("4_profile")
+    }
+
+    @Test
+    fun cosmetics() {
+        rule.mainClock.autoAdvance = false
+        rule.setContent {
+            ZeroSpinTheme {
+                androidx.compose.foundation.layout.Column(
+                    androidx.compose.ui.Modifier.fillMaxSize().background(com.zerospin.app.ui.theme.Bg).padding(24.dp),
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(36.dp),
+                ) {
+                    com.zerospin.app.ui.hud.AvatarCosmetics.chunked(3).forEach { row ->
+                        androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(40.dp)) {
+                            row.forEach { (id, title) ->
+                                androidx.compose.foundation.layout.Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                                    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.size(84.dp)) {
+                                        com.zerospin.app.ui.hud.TargetRing(androidx.compose.ui.Modifier.size(84.dp)) {
+                                            androidx.compose.material3.Text("A", color = com.zerospin.app.ui.theme.Cyan)
+                                        }
+                                        com.zerospin.app.ui.hud.CosmeticOverlay(id, 84)
+                                    }
+                                    androidx.compose.material3.Text(title, color = com.zerospin.app.ui.theme.Muted)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        shot("6_cosmetics")
+    }
+
+    @Test
+    fun profileEdit() {
+        start()
+        tap("ПРОФИЛЬ")
+        rule.onNodeWithContentDescription("Изменить профиль").performClick()
+        settle()
+        rule.onRoot().performTouchInput { swipeUp() }
+        shot("7_profile_edit")
     }
 
     @Test

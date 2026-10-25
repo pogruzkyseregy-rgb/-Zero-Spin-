@@ -207,6 +207,13 @@ private fun AuroraProfileBody(serverUrl: String, onBack: () -> Unit) {
     var avatar by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     val images = remember { mutableStateOf<Map<Int, android.graphics.Bitmap>>(emptyMap()) }
+    val zs = LocalZs.current
+    var relation by remember { mutableStateOf("") }
+    var friendError by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(zs.token) {
+        if (zs.token.isNotBlank()) runCatching { ZsServer.person(zs.base, zs.token, AURORA_LOGIN) }.onSuccess { relation = it.relation }
+    }
 
     LaunchedEffect(serverUrl) {
         try {
@@ -255,6 +262,25 @@ private fun AuroraProfileBody(serverUrl: String, onBack: () -> Unit) {
         if (error != null) {
             Spacer(Modifier.height(14.dp))
             Text("Не загрузилось: $error", color = Red, fontSize = 12.sp)
+        }
+        if (zs.token.isNotBlank() && relation.isNotBlank()) {
+            Spacer(Modifier.height(14.dp))
+            if (relation == "friends") {
+                Text("✓ В ДРУЗЬЯХ", color = com.zerospin.app.ui.theme.Mint, fontSize = 12.sp, letterSpacing = 2.sp,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterHorizontally))
+            } else {
+                HudButton("Добавить в друзья", onClick = {
+                    scope.launch {
+                        try {
+                            relation = ZsServer.friend(zs.base, zs.token, "request", AURORA_LOGIN).relation
+                            friendError = null
+                        } catch (e: ZsException) {
+                            friendError = e.message
+                        }
+                    }
+                }, modifier = Modifier.fillMaxWidth(), primary = true)
+            }
+            friendError?.let { Text(it, color = Red, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp)) }
         }
         if (!p?.bio.isNullOrBlank()) {
             Spacer(Modifier.height(14.dp))

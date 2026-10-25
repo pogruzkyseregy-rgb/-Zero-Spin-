@@ -9,18 +9,22 @@
   zs-aurora post "текст" [ФАЙЛ_ИЛИ_ССЫЛКА]  новость приложения, по желанию с картинкой
   zs-aurora delete НОМЕР                 удалить новость
   zs-aurora news                         список новостей с номерами
+  zs-aurora friends                      кто у тебя в друзьях (заявки к тебе принимаются сами)
+  zs-aurora unfriend ЛОГИН               убрать человека из друзей
 Всё сразу видно в приложении: профиль открывается из чата поддержки.
 """
 import os, shutil, subprocess, sys, tempfile, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import zs_core as core
+import zs_social as social
 
 MEDIA = os.path.join(HERE, "media")
 MAX_IMAGE = core.MAX_IMAGE
 
 db = core.connect(os.environ.get("ZS_DB", os.path.join(HERE, "zs.db")))
 core.ensure_aurora(db)
+social.init(db)
 ME = core.AURORA_LOGIN
 
 
@@ -65,6 +69,15 @@ try:
     elif a[0] == "news":
         for n in core.news(db):
             print(f"№{n['id']} {time.strftime('%d.%m %H:%M', time.localtime(n['at']))}{' [фото]' if n['has_image'] else ''}: {n['text'][:200]}")
+    elif a[0] == "friends":
+        me_row = db.execute("select * from users where login_key=?", (core.key(ME),)).fetchone()
+        f = social.friends(db, me_row)["friends"]
+        print(f"друзей: {len(f)}")
+        for p in f:
+            print(f"  @{p['login']} · {p['name']}" + (" · БАН" if p["banned"] else ""))
+    elif a[0] == "unfriend" and len(a) == 2:
+        me_row = db.execute("select * from users where login_key=?", (core.key(ME),)).fetchone()
+        print(social.remove(db, me_row, a[1])["relation"])
     else:
         print(__doc__)
 except core.ZsError as e:

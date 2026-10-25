@@ -15,7 +15,7 @@ data class ZsMe(val nick: String, val warnings: Int, val banned: Boolean, val ba
 /** Вход: ключ сессии, логин как его записал сервер, роль. */
 data class ZsSession(val token: String, val login: String, val role: String)
 
-data class ZsProfile(val login: String, val name: String, val status: String, val bio: String, val role: String, val banned: Boolean, val hasAvatar: Boolean, val avatarV: Long)
+data class ZsProfile(val login: String, val name: String, val status: String, val bio: String, val role: String, val banned: Boolean, val hasAvatar: Boolean, val avatarV: Long, val cosmetic: String = "")
 
 data class ZsNews(val id: Int, val text: String, val hasImage: Boolean, val at: Long, val name: String)
 
@@ -30,6 +30,8 @@ data class ZsPerson(
     val hasAvatar: Boolean,
     val avatarV: Long,
     val relation: String = "",
+    /** Украшение аватара: halo, demon, orbit, hat, crown, stars или пусто */
+    val cosmetic: String = "",
 ) {
     val team: Boolean get() = role == "admin" || role == "aurora"
 }
@@ -104,7 +106,7 @@ object ZsServer {
     suspend fun profile(base: String, login: String): ZsProfile {
         val j = call(base, "/api/users/$login", "GET", null, null)
         return ZsProfile(j.optString("login"), j.optString("name"), j.optString("status"), j.optString("bio"), j.optString("role"),
-            j.optBoolean("banned"), j.optBoolean("has_avatar"), j.optLong("avatar_v"))
+            j.optBoolean("banned"), j.optBoolean("has_avatar"), j.optLong("avatar_v"), j.optString("cosmetic"))
     }
 
     suspend fun news(base: String): List<ZsNews> {
@@ -123,7 +125,7 @@ object ZsServer {
 
     private fun person(o: JSONObject) = ZsPerson(
         o.optString("login"), o.optString("name"), o.optString("status"), o.optString("bio"), o.optString("role", "user"),
-        o.optBoolean("banned"), o.optBoolean("has_avatar"), o.optLong("avatar_v"), o.optString("relation"),
+        o.optBoolean("banned"), o.optBoolean("has_avatar"), o.optLong("avatar_v"), o.optString("relation"), o.optString("cosmetic"),
     )
 
     private fun people(arr: org.json.JSONArray?): List<ZsPerson> =
@@ -162,8 +164,9 @@ object ZsServer {
         return ZsSync(list, j.optInt("incoming"), j.optInt("last_id", after), j.optBoolean("more"))
     }
 
-    suspend fun updateMe(base: String, token: String, name: String, status: String, bio: String): ZsPerson =
-        person(call(base, "/api/me/profile", "POST", token, JSONObject().put("name", name).put("status", status).put("bio", bio)))
+    suspend fun updateMe(base: String, token: String, name: String, status: String, bio: String, cosmetic: String): ZsPerson =
+        person(call(base, "/api/me/profile", "POST", token,
+            JSONObject().put("name", name).put("status", status).put("bio", bio).put("cosmetic", cosmetic)))
 
     suspend fun uploadMyAvatar(base: String, token: String, jpeg: ByteArray): ZsPerson {
         val b64 = android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP)

@@ -60,7 +60,8 @@ class AppStore(context: Context) {
             })
             .put("cover", p.coverUri ?: "")
             .put("photos", attachmentsToJson(p.photos))
-            .put("friends", JSONArray(p.friends)))
+            .put("friends", JSONArray(p.friends))
+            .put("cosmetic", p.cosmetic))
         root.put("settings", JSONObject()
             .put("notifications", s.notifications).put("sounds", s.sounds).put("vibration", s.vibration)
             .put("showOnline", s.showOnline).put("readReceipts", s.readReceipts)
@@ -164,6 +165,7 @@ class AppStore(context: Context) {
                 coverUri = o.optString("cover", "").ifBlank { null },
                 photos = attachmentsFromJson(o.optJSONArray("photos")),
                 friends = o.optJSONArray("friends")?.strings() ?: emptyList(),
+                cosmetic = o.optString("cosmetic"),
             )
         }
         root.optJSONObject("settings")?.let { o ->

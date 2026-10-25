@@ -407,6 +407,7 @@ private fun ChatBadge(chat: Chat, size: Int) {
             login = remote?.login ?: chat.peer, version = remote?.avatarV ?: 0, hasAvatar = remote?.hasAvatar == true,
             size = size, letter = chat.name, color = if (chat.id == SUPPORT_CHAT_ID) Violet else Cyan,
             team = remote?.team == true,
+            cosmetic = remote?.cosmetic.orEmpty(),
         )
         return
     }

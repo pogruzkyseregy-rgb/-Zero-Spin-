@@ -207,6 +207,8 @@ data class Profile(
     val photos: List<Attachment> = emptyList(),
     /** Друзья: ники */
     val friends: List<String> = emptyList(),
+    /** Украшение аватара (нимб, корона…), пусто — без него */
+    val cosmetic: String = "",
 )
 
 data class AppSettings(

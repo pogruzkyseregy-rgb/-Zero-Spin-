@@ -96,6 +96,7 @@ fun ProfileScreen(
     var status by rememberSaveable { mutableStateOf("") }
     var birthday by rememberSaveable { mutableStateOf("") }
     var bio by rememberSaveable { mutableStateOf("") }
+    var cosmetic by rememberSaveable { mutableStateOf("") }
 
     // Фото, открытое на весь экран (любое фото профиля)
     var viewing by remember { mutableStateOf<Attachment?>(null) }
@@ -106,6 +107,7 @@ fun ProfileScreen(
         status = profile.status
         birthday = profile.birthday
         bio = profile.bio
+        cosmetic = profile.cosmetic
         editing = true
     }
 
@@ -129,7 +131,8 @@ fun ProfileScreen(
         nick.trim() != profile.nick ||
         status.trim() != profile.status ||
         bio.trim() != profile.bio ||
-        birthday.trim() != profile.birthday
+        birthday.trim() != profile.birthday ||
+        cosmetic != profile.cosmetic
     val canSave = nameError == null && nickError == null && birthdayError == null && dirty
 
     // Просмотр фото поверх экрана
@@ -268,6 +271,9 @@ fun ProfileScreen(
                         fontSize = 10.sp,
                         letterSpacing = 1.sp,
                     )
+                    Spacer(Modifier.height(14.dp))
+                    Text("УКРАШЕНИЕ АВАТАРА", color = Cyan.copy(alpha = 0.85f), fontSize = 10.sp, letterSpacing = 1.5.sp)
+                    CosmeticPicker(cosmetic, name.ifBlank { profile.name }) { cosmetic = it }
                     Spacer(Modifier.height(12.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
@@ -301,6 +307,7 @@ fun ProfileScreen(
                                             status = status.trim(),
                                             bio = bio.trim(),
                                             birthday = birthday.trim(),
+                                            cosmetic = cosmetic,
                                         ),
                                     )
                                     editing = false
@@ -548,7 +555,36 @@ private fun Avatar(profile: Profile, onPick: () -> Unit, modifier: Modifier = Mo
             )
         }
     }
+    com.zerospin.app.ui.hud.CosmeticOverlay(profile.cosmetic, 104)
     if (admin) AvBadge(30)
+    }
+}
+
+/** Выбор украшения аватара: превью каждого на кружке с первой буквой имени. */
+@Composable
+private fun CosmeticPicker(selected: String, letter: String, onPick: (String) -> Unit) {
+    androidx.compose.foundation.lazy.LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 14.dp, bottom = 4.dp, start = 4.dp, end = 4.dp),
+    ) {
+        items(com.zerospin.app.ui.hud.AvatarCosmetics.size) { i ->
+            val (id, title) = com.zerospin.app.ui.hud.AvatarCosmetics[i]
+            val active = id == selected
+            Column(
+                Modifier.width(70.dp).clickable { onPick(id) },
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(Modifier.size(52.dp)) {
+                    TargetRing(Modifier.size(52.dp), color = if (active) com.zerospin.app.ui.theme.Mint else Cyan) {
+                        Text(letter.take(1).uppercase(), color = Cyan, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
+                    com.zerospin.app.ui.hud.CosmeticOverlay(id, 52)
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(title, color = if (active) com.zerospin.app.ui.theme.Mint else Muted, fontSize = 10.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 2)
+            }
+        }
     }
 }
 

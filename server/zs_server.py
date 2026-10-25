@@ -71,6 +71,7 @@ class ProfileReq(BaseModel):
     name: Optional[str] = None
     status: Optional[str] = None
     bio: Optional[str] = None
+    cosmetic: Optional[str] = None
 
 
 class NickReq(BaseModel):
@@ -324,7 +325,7 @@ def dm_image(msg_id: int, authorization: str = Header(default="")):
 @app.post("/api/me/profile")
 def me_profile(req: ProfileReq, authorization: str = Header(default="")):
     me = _me(authorization)
-    return _wrap(lambda: social.update_me(DB, me, name=req.name, status=req.status, bio=req.bio))
+    return _wrap(lambda: social.update_me(DB, me, name=req.name, status=req.status, bio=req.bio, cosmetic=req.cosmetic))
 
 
 @app.post("/api/me/avatar")

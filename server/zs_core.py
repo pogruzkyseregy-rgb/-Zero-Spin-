@@ -36,8 +36,11 @@ create table if not exists login_fail(login_key text not null, at real not null)
 USER_COLUMNS = {
     "login": "text not null default ''", "login_key": "text not null default ''", "pass_hash": "text not null default ''",
     "role": "text not null default 'user'", "status": "text not null default ''", "bio": "text not null default ''",
-    "avatar": "text not null default ''",
+    "avatar": "text not null default ''", "cosmetic": "text not null default ''",
 }
+
+# Украшения аватара для всех. Лисьи ушки сюда не входят: они только у Авроры.
+COSMETICS = ("", "halo", "demon", "orbit", "hat", "crown", "stars")
 
 
 class ZsError(Exception):
@@ -157,7 +160,8 @@ def profile(db, login_: str) -> dict:
     if not row:
         raise ZsError(404, "нет такого пользователя")
     return {"login": row["login"], "name": row["name"], "status": row["status"], "bio": row["bio"], "role": row["role"],
-            "banned": bool(row["banned"]), "has_avatar": bool(row["avatar"]), "avatar_v": zlib.crc32(row["avatar"].encode())}
+            "banned": bool(row["banned"]), "has_avatar": bool(row["avatar"]), "avatar_v": zlib.crc32(row["avatar"].encode()),
+            "cosmetic": row["cosmetic"]}
 
 
 def avatar_path(db, login_: str) -> str:
@@ -167,10 +171,14 @@ def avatar_path(db, login_: str) -> str:
     return row["avatar"]
 
 
-def update_profile(db, login_: str, name=None, status=None, bio=None, avatar=None) -> dict:
+def update_profile(db, login_: str, name=None, status=None, bio=None, avatar=None, cosmetic=None) -> dict:
     row = db.execute("select id from users where login_key=?", (key(login_),)).fetchone()
     if not row:
         raise ZsError(404, "нет такого пользователя")
+    if cosmetic is not None:
+        if cosmetic not in COSMETICS:
+            raise ZsError(400, "нет такого украшения")
+        db.execute("update users set cosmetic=? where id=?", (cosmetic, row["id"]))
     for col, val, lim in (("name", name, 60), ("status", status, 120), ("bio", bio, 1500), ("avatar", avatar, 500)):
         if val is not None:
             db.execute(f"update users set {col}=? where id=?", (val.strip()[:lim], row["id"]))

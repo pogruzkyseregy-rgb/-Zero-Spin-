@@ -45,7 +45,7 @@ def card(row) -> dict:
     """То, что о человеке видят другие: без предупреждений и служебных полей."""
     return {"login": row["login"], "name": row["name"], "status": row["status"], "bio": row["bio"], "role": row["role"],
             "banned": bool(row["banned"]), "has_avatar": bool(row["avatar"]),
-            "avatar_v": zlib.crc32(row["avatar"].encode())}
+            "avatar_v": zlib.crc32(row["avatar"].encode()), "cosmetic": row["cosmetic"]}
 
 
 def relation(db, me, other) -> str:
@@ -80,9 +80,16 @@ def request(db, me, login: str) -> dict:
     other = _user(db, login)
     if other["id"] == me["id"]:
         raise ZsError(400, "себя в друзья не добавить")
-    if other["role"] == "aurora":
-        raise ZsError(400, "Аврора отвечает в чате поддержки, в друзья её не добавить")
     rel = relation(db, me, other)
+    if other["role"] == "aurora" and rel != "friends":
+        # Аврора принимает заявку сразу, но не от тех, кого сама заблокировала. Убрать из друзей может она: zs-aurora unfriend
+        if me["banned"]:
+            raise ZsError(403, "Аврора тебя заблокировала")
+        db.execute("delete from friends where a=? and b=?", _pair(me["id"], other["id"]))
+        a, b = _pair(me["id"], other["id"])
+        db.execute("insert into friends(a,b,requester,status,created) values(?,?,?,?,?)", (a, b, me["id"], "friends", time.time()))
+        core.event(db, me["id"], me["login"], "friend_aurora", "")
+        return person(db, me, login)
     if rel in ("friends", "outgoing"):
         return person(db, me, login)
     if rel == "incoming":
@@ -142,6 +149,8 @@ def _msg(db, r, logins: dict) -> dict:
 
 def send(db, me, login: str, text: str, image: str = "") -> dict:
     other = _user(db, login)
+    if other["role"] == "aurora":
+        raise ZsError(400, "Авроре пиши в чате поддержки")
     if relation(db, me, other) != "friends":
         raise ZsError(403, "писать можно только друзьям")
     text = (text or "").strip()[:MAX_TEXT]
@@ -175,8 +184,8 @@ def dm_image(db, me, msg_id: int) -> str:
     return r["image"]
 
 
-def update_me(db, me, name=None, status=None, bio=None, avatar=None) -> dict:
+def update_me(db, me, name=None, status=None, bio=None, avatar=None, cosmetic=None) -> dict:
     if name is not None and not name.strip():
         name = me["login"]
-    core.update_profile(db, me["login"], name=name, status=status, bio=bio, avatar=avatar)
+    core.update_profile(db, me["login"], name=name, status=status, bio=bio, avatar=avatar, cosmetic=cosmetic)
     return card(_user(db, me["login"]))

@@ -93,8 +93,10 @@ fun RemoteAvatar(
     modifier: Modifier = Modifier,
     color: Color = Cyan,
     team: Boolean = false,
+    cosmetic: String = "",
 ) {
     val base = LocalZs.current.base
+    val isAurora = login.equals(AURORA_LOGIN, ignoreCase = true)
     val cacheKey = "${login.lowercase()}#$version"
     var bmp by remember(cacheKey) { mutableStateOf(AvatarCache.map.get(cacheKey)) }
     LaunchedEffect(cacheKey, hasAvatar, base) {
@@ -106,7 +108,7 @@ fun RemoteAvatar(
         }
     }
     Box(modifier.size(size.dp)) {
-        TargetRing(Modifier.size(size.dp), color = color, ears = login.equals(AURORA_LOGIN, ignoreCase = true)) {
+        TargetRing(Modifier.size(size.dp), color = color, ears = isAurora) {
             val b = bmp
             if (b != null) {
                 Image(b.asImageBitmap(), contentDescription = login, contentScale = ContentScale.Crop,
@@ -115,6 +117,8 @@ fun RemoteAvatar(
                 Text(letter.take(1).uppercase(), color = color, fontWeight = FontWeight.Bold, fontSize = (size / 2.6f).sp)
             }
         }
+        // У Авроры свои ушки, остальным — выбранное украшение
+        if (!isAurora) com.zerospin.app.ui.hud.CosmeticOverlay(cosmetic, size)
         if (team) AvBadge((size * 0.42f).toInt().coerceAtLeast(14))
     }
 }
@@ -123,7 +127,7 @@ fun RemoteAvatar(
 private fun PersonAvatar(p: ZsPerson, size: Int) {
     Box(if (p.banned) Modifier.bannedGlitch() else Modifier) {
         RemoteAvatar(p.login, p.avatarV, p.hasAvatar, size, p.name.ifBlank { p.login },
-            color = if (p.role == "aurora") Violet else Cyan, team = p.team)
+            color = if (p.role == "aurora") Violet else Cyan, team = p.team, cosmetic = p.cosmetic)
     }
 }
 
@@ -240,7 +244,7 @@ fun PeopleScreen(
                 SmallAction("✕", Muted) { act("remove", p.login) }
             }
             "outgoing" -> SmallAction("Отменить", Muted) { act("remove", p.login) }
-            else -> if (p.role != "aurora") SmallAction("+ В друзья", Cyan, filled = true) { act("request", p.login) }
+            else -> SmallAction("+ В друзья", Cyan, filled = true) { act("request", p.login) }
         }
     }
 

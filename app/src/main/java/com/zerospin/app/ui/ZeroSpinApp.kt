@@ -283,7 +283,7 @@ fun ZeroSpinApp() {
 
     fun applyFriends(f: ZsFriends) {
         (f.friends + f.incoming + f.outgoing).forEach { people[it.login.lowercase()] = it }
-        f.friends.forEach { p ->
+        f.friends.filter { !it.login.equals(AURORA_LOGIN, ignoreCase = true) }.forEach { p ->
             val n = p.name.ifBlank { p.login }
             peerChatId(p.login)?.let { id -> updateChat(id) { c -> if (c.name == n) c else c.copy(name = n) } }
         }
@@ -297,12 +297,21 @@ fun ZeroSpinApp() {
         if (s.serverToken.isBlank()) return
         runCatching { ZsServer.friends(s.serverUrl, s.serverToken) }.onSuccess { applyFriends(it) }
         runCatching { ZsServer.profile(s.serverUrl, AURORA_LOGIN) }.onSuccess { a ->
-            people[AURORA_LOGIN.lowercase()] = ZsPerson(a.login, a.name, a.status, a.bio, a.role, a.banned, a.hasAvatar, a.avatarV)
+            people[AURORA_LOGIN.lowercase()] = people[AURORA_LOGIN.lowercase()]?.copy(hasAvatar = a.hasAvatar, avatarV = a.avatarV, name = a.name, status = a.status)
+                ?: ZsPerson(a.login, a.name, a.status, a.bio, a.role, a.banned, a.hasAvatar, a.avatarV)
         }
     }
 
     fun openPeer(p: ZsPerson) {
         people[p.login.lowercase()] = p
+        if (p.login.equals(AURORA_LOGIN, ignoreCase = true)) {
+            // с Авророй переписка — это чат поддержки
+            showPeople = false
+            profileLogin = null
+            selectTab(1)
+            openChatById(SUPPORT_CHAT_ID)
+            return
+        }
         val id = ensurePeerChat(p.login, p.name)
         showPeople = false
         profileLogin = null
@@ -388,7 +397,7 @@ fun ZeroSpinApp() {
         if (s.serverToken.isBlank()) return
         val p = store.profile.value
         scope.launch {
-            runCatching { ZsServer.updateMe(s.serverUrl, s.serverToken, p.name, p.status, p.bio) }
+            runCatching { ZsServer.updateMe(s.serverUrl, s.serverToken, p.name, p.status, p.bio, p.cosmetic) }
             if (withAvatar) {
                 p.avatarUri?.let { uri ->
                     squareAvatarJpeg(context, uri)?.let { jpeg -> runCatching { ZsServer.uploadMyAvatar(s.serverUrl, s.serverToken, jpeg) } }
@@ -875,11 +884,13 @@ fun ZeroSpinApp() {
         )
     }
 
-    if (showAuroraProfile) {
-        AuroraProfileScreen(serverUrl = settings.serverUrl, onBack = { showAuroraProfile = false })
-    }
-
     CompositionLocalProvider(LocalZs provides zsCtx, LocalPeople provides people) {
+        if (showAuroraProfile) {
+            AuroraProfileScreen(serverUrl = settings.serverUrl, onBack = {
+                showAuroraProfile = false
+                scope.launch { refreshFriends() }
+            })
+        }
         if (showPeople) {
             PeopleScreen(
                 onDismiss = { showPeople = false },
