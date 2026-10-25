@@ -361,7 +361,7 @@ private fun DrawScope.starCrown(phase: Float) {
 private fun DrawScope.thornHalo(phase: Float, bob: Float) {
     val s = size.width
     val c = Offset(s / 2, s / 2)
-    val r = s * 0.6f
+    val r = s * 0.53f
     val crimson = Color(0xFFB3122E)
     rotate(phase * 30f - 15f, c) {
         drawArc(crimson.copy(alpha = 0.25f), 150f, 240f, false, Offset(c.x - r, c.y - r), Size(r * 2, r * 2), style = Stroke(width = s * 0.08f))
@@ -372,7 +372,7 @@ private fun DrawScope.thornHalo(phase: Float, bob: Float) {
             val ang = Math.toRadians((150.0 + 240.0 * i / (lens.size - 1)))
             val dir = Offset(cos(ang).toFloat(), sin(ang).toFloat())
             val from = c + dir * r
-            val to = c + dir * (r + s * l * (0.85f + 0.3f * bob))
+            val to = c + dir * (r + s * l * 0.6f * (0.85f + 0.3f * bob))
             val side = Offset(-dir.y, dir.x) * (s * 0.018f)
             drawPath(Path().apply { moveTo(from.x + side.x, from.y + side.y); lineTo(to.x, to.y); lineTo(from.x - side.x, from.y - side.y); close() },
                 Brush.linearGradient(listOf(crimson, Color(0xFFFF8FA3)), start = from, end = to))
