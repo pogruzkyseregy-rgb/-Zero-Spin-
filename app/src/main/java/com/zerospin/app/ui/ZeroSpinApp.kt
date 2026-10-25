@@ -36,6 +36,9 @@ import com.zerospin.app.data.Story
 import com.zerospin.app.data.STORY_LIFETIME_MS
 import com.zerospin.app.data.SUPPORT_CHAT_ID
 import com.zerospin.app.data.auroraReply
+import com.zerospin.app.data.AppSettings
+import com.zerospin.app.data.ZsException
+import com.zerospin.app.data.ZsServer
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableLongStateOf
@@ -214,6 +217,80 @@ fun ZeroSpinApp() {
         if (openChat != chatId || tab != 1) updateChat(chatId) { it.copy(unread = it.unread + 1) }
     }
 
+    fun setSettings(change: (AppSettings) -> AppSettings) {
+        store.settings.value = change(store.settings.value)
+    }
+
+    /** Вход на сервер под ником из профиля. Первый раз телефон регистрируется сам. */
+    suspend fun ensureAccount(): String? {
+        val s = store.settings.value
+        if (s.serverToken.isNotBlank()) return s.serverToken
+        val p = store.profile.value
+        return try {
+            val (token, nick) = ZsServer.register(s.serverUrl, p.nick, p.name)
+            setSettings { it.copy(serverToken = token, serverNick = nick) }
+            token
+        } catch (e: ZsException) {
+            deliverIncoming(
+                SUPPORT_CHAT_ID,
+                if (e.code == 409) "Ник @${p.nick} на сервере уже занят. Смени ник в профиле и напиши снова."
+                else "Не получилось войти на сервер: ${e.message}",
+            )
+            null
+        }
+    }
+
+    /** Живая Аврора: ответ, предупреждения и бан решает сервер, приложение только показывает. */
+    suspend fun askSupport(text: String) {
+        val s0 = store.settings.value
+        if (s0.zsBanned) return
+        if (text.isBlank()) {
+            deliverIncoming(SUPPORT_CHAT_ID, "Вложения я пока не вижу. Напиши словами.")
+            return
+        }
+        typingChat = SUPPORT_CHAT_ID
+        try {
+            val token = ensureAccount() ?: return
+            val r = try {
+                ZsServer.support(store.settings.value.serverUrl, token, text)
+            } catch (e: ZsException) {
+                when (e.code) {
+                    403 -> {
+                        setSettings { it.copy(zsBanned = true) }
+                        deliverIncoming(SUPPORT_CHAT_ID, "⛔ Аврора больше не отвечает тебе.")
+                    }
+                    401 -> {
+                        setSettings { it.copy(serverToken = "") }
+                        deliverIncoming(SUPPORT_CHAT_ID, "Сервер не узнал этот телефон. Напиши ещё раз, войду заново.")
+                    }
+                    0 -> deliverIncoming(SUPPORT_CHAT_ID, "Нет связи с сервером. Пока подсказка из самого приложения:\n" + auroraReply(text))
+                    else -> deliverIncoming(SUPPORT_CHAT_ID, e.message ?: "Ошибка сервера")
+                }
+                return
+            }
+            deliverIncoming(SUPPORT_CHAT_ID, r.reply)
+            setSettings {
+                it.copy(zsWarnings = r.warnings, zsBanned = r.banned, zsBanReason = if (r.banned) r.reason else it.zsBanReason)
+            }
+            when {
+                r.banned -> deliverIncoming(SUPPORT_CHAT_ID, "⛔ БАН. Второе предупреждение: ${r.reason}. Аврора больше не отвечает.")
+                r.warned -> deliverIncoming(SUPPORT_CHAT_ID, "⚠ ПРЕДУПРЕЖДЕНИЕ ${r.warnings} из ${r.warnLimit}: ${r.reason}. Следующее — бан.")
+            }
+        } finally {
+            typingChat = null
+        }
+    }
+
+    // При запуске сверяем бан и предупреждения с сервером: их мог снять админ
+    LaunchedEffect(Unit) {
+        val s = store.settings.value
+        if (s.serverToken.isNotBlank()) {
+            runCatching { ZsServer.me(s.serverUrl, s.serverToken) }.onSuccess { m ->
+                setSettings { it.copy(zsWarnings = m.warnings, zsBanned = m.banned, zsBanReason = m.banReason, serverNick = m.nick) }
+            }
+        }
+    }
+
     // Вернулись на вкладку с открытым чатом — он прочитан
     LaunchedEffect(tab, openChat) {
         if (tab == 1 && openChat >= 0) updateChat(openChat) { if (it.unread == 0) it else it.copy(unread = 0) }
@@ -230,14 +307,7 @@ fun ZeroSpinApp() {
             replyTo = replyTo,
         )
         if (chatId == SUPPORT_CHAT_ID) {
-            // Аврора «печатает» и отвечает через пару секунд, как живой собеседник
-            scope.launch {
-                delay(500)
-                typingChat = SUPPORT_CHAT_ID
-                delay(900L + (text.length * 15L).coerceAtMost(1800L))
-                typingChat = null
-                deliverIncoming(SUPPORT_CHAT_ID, auroraReply(text))
-            }
+            scope.launch { askSupport(text) }
         }
     }
 
@@ -470,6 +540,7 @@ fun ZeroSpinApp() {
 
                     3 -> ProfileScreen(
                         profile = store.profile.value,
+                        banned = settings.zsBanned,
                         postCount = store.posts.count { it.author == myName },
                         chatCount = store.chats.count { it.id != SUPPORT_CHAT_ID && it.id != SAVED_CHAT_ID },
                         onSave = { store.profile.value = it },

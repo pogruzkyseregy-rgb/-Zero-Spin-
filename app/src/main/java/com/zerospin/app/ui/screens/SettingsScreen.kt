@@ -183,6 +183,32 @@ fun SettingsScreen(
                     }
                 }
 
+                HudSection("Сервер") {
+                    var url by remember(settings.serverUrl) { mutableStateOf(settings.serverUrl) }
+                    com.zerospin.app.ui.hud.HudTextField(
+                        value = url,
+                        onValueChange = { url = it.trim() },
+                        label = "АДРЕС СЕРВЕРА",
+                        hint = "Через него идёт живая Аврора. По умолчанию сервер на её машине",
+                    )
+                    if (url != settings.serverUrl && url.startsWith("https://")) {
+                        androidx.compose.material3.TextButton(onClick = {
+                            // другой сервер: вход нужен заново, бан и предупреждения берутся оттуда
+                            onChange(settings.copy(serverUrl = url, serverToken = "", serverNick = "", zsWarnings = 0, zsBanned = false, zsBanReason = ""))
+                        }) { Text("Сохранить адрес", color = Cyan) }
+                    }
+                    Text(
+                        when {
+                            settings.serverToken.isBlank() -> "Ещё не вошли: вход случится сам при первом сообщении Авроре"
+                            settings.zsBanned -> "@${settings.serverNick} · БАН: ${settings.zsBanReason.ifBlank { "без причины" }}"
+                            else -> "@${settings.serverNick} · предупреждений ${settings.zsWarnings} из 2"
+                        },
+                        color = if (settings.zsBanned) com.zerospin.app.ui.theme.Red else Muted,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                }
+
                 HudSection("О приложении") {
                     Row(
                         Modifier.fillMaxWidth().padding(vertical = 12.dp),

@@ -1,5 +1,8 @@
 package com.zerospin.app.ui.screens
 
+import com.zerospin.app.ui.hud.BannedGlitchText
+import com.zerospin.app.ui.hud.bannedGlitch
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -78,6 +81,7 @@ private val StatusPresets = listOf("на связи", "на смене", "в д�
 @Composable
 fun ProfileScreen(
     profile: Profile,
+    banned: Boolean = false,
     postCount: Int,
     chatCount: Int,
     onSave: (Profile) -> Unit,
@@ -159,6 +163,7 @@ fun ProfileScreen(
 
             ProfileHeader(
                 profile = profile,
+                banned = banned,
                 onAvatarTap = {
                     val uri = profile.avatarUri
                     if (uri != null) viewing = imageAttachment(uri, "аватар") else pickAvatar()
@@ -177,11 +182,16 @@ fun ProfileScreen(
                     fontSize = 18.sp,
                     letterSpacing = 3.sp,
                 )
-                Text(
-                    listOfNotNull("@${profile.nick}", profile.status.ifBlank { null }).joinToString(" · "),
-                    color = Muted,
-                    fontSize = 12.sp,
-                )
+                if (banned) {
+                    BannedGlitchText("@${profile.nick}", color = Red, fontSize = 12.sp)
+                    Text("⛔ ЗАБЛОКИРОВАН АВРОРОЙ", color = Red, fontSize = 10.sp, letterSpacing = 2.sp)
+                } else {
+                    Text(
+                        listOfNotNull("@${profile.nick}", profile.status.ifBlank { null }).joinToString(" · "),
+                        color = Muted,
+                        fontSize = 12.sp,
+                    )
+                }
                 Spacer(Modifier.height(18.dp))
 
                 // Блоки в порядке, который задан в конструкторе; обложка уже в шапке
@@ -311,6 +321,7 @@ fun ProfileScreen(
 @Composable
 private fun ProfileHeader(
     profile: Profile,
+    banned: Boolean,
     onAvatarTap: () -> Unit,
     onCoverTap: (String) -> Unit,
 ) {
@@ -334,12 +345,13 @@ private fun ProfileHeader(
                 profile = profile,
                 onPick = onAvatarTap,
                 modifier = Modifier.align(Alignment.BottomCenter).offset(y = 52.dp),
+                banned = banned,
             )
         }
         Spacer(Modifier.height(60.dp))
     } else {
         Spacer(Modifier.height(16.dp))
-        Avatar(profile = profile, onPick = onAvatarTap)
+        Avatar(profile = profile, onPick = onAvatarTap, banned = banned)
         Spacer(Modifier.height(12.dp))
     }
 }
@@ -511,9 +523,9 @@ private fun InfoRow(label: String, value: String) {
 
 /** Круг с фото или инициалом. Нажатие передаётся наружу: открыть фото или выбрать новое. */
 @Composable
-private fun Avatar(profile: Profile, onPick: () -> Unit, modifier: Modifier = Modifier) {
+private fun Avatar(profile: Profile, onPick: () -> Unit, modifier: Modifier = Modifier, banned: Boolean = false) {
     val photo = profile.avatarUri?.let { rememberThumb(it, 512) }
-    TargetRing(modifier.size(104.dp).clickable(onClick = onPick)) {
+    TargetRing(modifier.size(104.dp).then(if (banned) Modifier.bannedGlitch() else Modifier).clickable(onClick = onPick)) {
         if (photo != null) {
             Image(
                 bitmap = photo,

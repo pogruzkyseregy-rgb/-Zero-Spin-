@@ -215,7 +215,18 @@ data class AppSettings(
     val animatedBackground: Boolean = true,
     /** Хэш PIN-кода на вход, пусто — без блокировки */
     val pinHash: String = "",
+    /** Сервер Zero Spin: адрес, ключ входа и ник, под которым зарегистрирован */
+    val serverUrl: String = DEFAULT_SERVER,
+    val serverToken: String = "",
+    val serverNick: String = "",
+    /** Предупреждения от Авроры и бан: так их видит сервер, приложение только показывает */
+    val zsWarnings: Int = 0,
+    val zsBanned: Boolean = false,
+    val zsBanReason: String = "",
 )
+
+/** Сервер на машине Авроры: HTTPS через Caddy, адрес по IP. */
+const val DEFAULT_SERVER = "https://37-220-86-132.sslip.io"
 
 fun nowTime(): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
 

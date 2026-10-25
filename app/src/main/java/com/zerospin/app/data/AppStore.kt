@@ -65,7 +65,9 @@ class AppStore(context: Context) {
             .put("notifications", s.notifications).put("sounds", s.sounds).put("vibration", s.vibration)
             .put("showOnline", s.showOnline).put("readReceipts", s.readReceipts)
             .put("openToAll", s.openToAll).put("glitch", s.glitch)
-            .put("animatedBackground", s.animatedBackground).put("pinHash", s.pinHash))
+            .put("animatedBackground", s.animatedBackground).put("pinHash", s.pinHash)
+            .put("serverUrl", s.serverUrl).put("serverToken", s.serverToken).put("serverNick", s.serverNick)
+            .put("zsWarnings", s.zsWarnings).put("zsBanned", s.zsBanned).put("zsBanReason", s.zsBanReason))
         root.put("posts", JSONArray().apply {
             posts.forEach { post ->
                 put(JSONObject().put("id", post.id).put("author", post.author).put("time", post.time)
@@ -173,6 +175,12 @@ class AppStore(context: Context) {
                 glitch = o.optBoolean("glitch", d.glitch),
                 animatedBackground = o.optBoolean("animatedBackground", d.animatedBackground),
                 pinHash = o.optString("pinHash", d.pinHash),
+                serverUrl = o.optString("serverUrl", d.serverUrl).ifBlank { d.serverUrl },
+                serverToken = o.optString("serverToken", d.serverToken),
+                serverNick = o.optString("serverNick", d.serverNick),
+                zsWarnings = o.optInt("zsWarnings", d.zsWarnings),
+                zsBanned = o.optBoolean("zsBanned", d.zsBanned),
+                zsBanReason = o.optString("zsBanReason", d.zsBanReason),
             )
         }
         root.optJSONArray("posts")?.objects()?.forEach { o ->

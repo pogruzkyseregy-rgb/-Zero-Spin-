@@ -10,6 +10,11 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
@@ -62,4 +67,66 @@ fun GlitchText(
         }
         Text(text, color = color, style = style)
     }
+}
+
+/**
+ * Глитч забаненного: ник постоянно ломается. Символы на миг подменяются шумом,
+ * красная и фиолетовая копии расходятся, строка дёргается.
+ */
+@Composable
+fun BannedGlitchText(text: String, color: Color, fontSize: TextUnit, modifier: Modifier = Modifier) {
+    var shown by remember(text) { androidx.compose.runtime.mutableStateOf(text) }
+    var shift by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(text) {
+        val junk = "▓▒░#%&@$!?"
+        while (true) {
+            delay(Random.nextLong(120, 420))
+            shown = text.map { if (it != ' ' && Random.nextInt(4) == 0) junk[Random.nextInt(junk.length)] else it }.joinToString("")
+            shift = Random.nextFloat() * 8f - 4f
+            delay(Random.nextLong(60, 140))
+            shown = text
+            shift = 0f
+        }
+    }
+    Box(modifier) {
+        Text(shown, color = Red.copy(alpha = 0.85f), fontSize = fontSize, modifier = Modifier.offset(x = shift.dp))
+        Text(shown, color = Violet.copy(alpha = 0.85f), fontSize = fontSize, modifier = Modifier.offset(x = (-shift).dp))
+        Text(shown, color = color, fontSize = fontSize)
+    }
+}
+
+/** Глитч картинки забаненного: дрожание, красноватый налёт и рваные полосы. */
+fun Modifier.bannedGlitch(): Modifier = composed {
+    var shift by remember { mutableFloatStateOf(0f) }
+    var seed by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(Random.nextLong(150, 500))
+            repeat(Random.nextInt(2, 5)) {
+                shift = Random.nextFloat() * 10f - 5f
+                seed = Random.nextInt(1, 1_000_000)
+                delay(Random.nextLong(40, 90))
+            }
+            shift = 0f
+            seed = 0
+        }
+    }
+    this
+        .graphicsLayer { translationX = shift * density }
+        .drawWithContent {
+            drawContent()
+            drawRect(Red.copy(alpha = 0.10f))
+            if (seed != 0) {
+                val r = Random(seed)
+                repeat(4 + r.nextInt(5)) {
+                    val y = r.nextFloat() * size.height
+                    val h = 2f + r.nextFloat() * size.height * 0.06f
+                    drawRect(
+                        (if (r.nextBoolean()) Red else Violet).copy(alpha = 0.55f),
+                        topLeft = Offset(r.nextFloat() * size.width * 0.3f, y),
+                        size = Size(size.width * (0.4f + r.nextFloat() * 0.6f), h),
+                    )
+                }
+            }
+        }
 }

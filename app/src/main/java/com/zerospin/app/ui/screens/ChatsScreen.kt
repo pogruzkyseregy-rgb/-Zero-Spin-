@@ -632,6 +632,8 @@ private fun Conversation(
                 } else {
                     Text(
                         when {
+                            chat.id == SUPPORT_CHAT_ID && settings.zsBanned -> "бан · Аврора не отвечает"
+                            chat.id == SUPPORT_CHAT_ID && settings.zsWarnings > 0 -> "квантовый ИИ · Аврора · предупреждение ${settings.zsWarnings} из 2"
                             chat.id == SUPPORT_CHAT_ID -> "квантовый ИИ · Аврора"
                             chat.id == SAVED_CHAT_ID -> "сохранённое для себя"
                             settings.showOnline -> "в сети"
@@ -845,11 +847,22 @@ private fun Conversation(
         }
 
         // Быстрые вопросы Авроре
-        if (chat.id == SUPPORT_CHAT_ID && draft.isEmpty() && !recording) {
+        val bannedHere = chat.id == SUPPORT_CHAT_ID && settings.zsBanned
+        if (chat.id == SUPPORT_CHAT_ID && draft.isEmpty() && !recording && !bannedHere) {
             SuggestionChips(onPick = { onSend(it, emptyList(), null) })
         }
 
-        if (recording) {
+        if (bannedHere) {
+            Column(
+                Modifier.fillMaxWidth().padding(vertical = 10.dp).hudPanel(cut = 10.dp).padding(14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                com.zerospin.app.ui.hud.BannedGlitchText("АВРОРА БОЛЬШЕ НЕ ОТВЕЧАЕТ", color = com.zerospin.app.ui.theme.Red, fontSize = 13.sp)
+                if (settings.zsBanReason.isNotBlank()) {
+                    Text("причина: ${settings.zsBanReason}", color = Muted, fontSize = 11.sp)
+                }
+            }
+        } else if (recording) {
             RecordingBar(
                 elapsed = recElapsed,
                 level = recLevel,
