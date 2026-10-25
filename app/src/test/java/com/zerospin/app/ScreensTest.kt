@@ -43,7 +43,8 @@ class ScreensTest {
 
     private fun seed() {
         val store = AppStore(RuntimeEnvironment.getApplication())
-        store.settings.value = store.settings.value.copy(authSkipped = true, animatedBackground = false)
+        store.settings.value = store.settings.value.copy(authSkipped = true, animatedBackground = false,
+            privacyAccepted = com.zerospin.app.ui.screens.PRIVACY_VERSION)
         store.profile.value = store.profile.value.copy(
             name = "Адонис", nick = "adonis", status = "Пишу код ночью", bio = "Делаю Zero Spin и Аврору.",
             friends = listOf("anna_k", "bob_r"), cosmetic = "crown",
@@ -152,6 +153,16 @@ class ScreensTest {
         rule.setContent { ZeroSpinTheme { com.zerospin.app.ui.screens.PrivacyScreen(onDismiss = {}) } }
         settle()
         com.github.takahirom.roborazzi.captureScreenRoboImage("build/outputs/roborazzi/8_privacy.png")
+    }
+
+    @Test
+    fun consent() {
+        val store = AppStore(RuntimeEnvironment.getApplication())
+        store.settings.value = store.settings.value.copy(animatedBackground = false)
+        store.save(store.toJsonString())
+        rule.mainClock.autoAdvance = false
+        rule.setContent { ZeroSpinTheme { ZeroSpinApp() } }
+        shot("9_consent")
     }
 
     @Test

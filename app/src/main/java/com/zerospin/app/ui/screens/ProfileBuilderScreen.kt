@@ -125,13 +125,14 @@ fun ProfileBuilderScreen(
                             BlockKind.PHOTOS -> PhotosEditor(profile.photos, onOpen = { viewing = it }) {
                                 onProfile(profile.copy(photos = it))
                             }
-                            BlockKind.FRIENDS -> FriendsEditor(profile.friends) { onProfile(profile.copy(friends = it)) }
+                            BlockKind.FRIENDS -> Text("Друзья показываются в профиле всегда, этот блок больше не нужен", color = Muted, fontSize = 11.sp)
                             else -> Text(block.kind.hint, color = Muted, fontSize = 11.sp)
                         }
                     }
                 }
 
-                val available = BlockKind.values().filter { kind -> blocks.none { it.kind == kind } }
+                // Друзей нет в списке: они видны всегда и приходят с сервера
+                val available = BlockKind.values().filter { kind -> kind != BlockKind.FRIENDS && blocks.none { it.kind == kind } }
                 SectionLabel("ДОСТУПНЫЕ БЛОКИ")
                 if (available.isEmpty()) {
                     Text("Все блоки уже в профиле", color = Muted, fontSize = 12.sp)

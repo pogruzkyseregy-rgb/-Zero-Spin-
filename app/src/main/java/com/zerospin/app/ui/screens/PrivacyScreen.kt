@@ -42,7 +42,7 @@ import com.zerospin.app.ui.theme.Violet
 /** Раздел политики: что положено сказать по форме и что Аврора добавляет от себя. */
 private data class PolicySection(val title: String, val formal: String, val aurora: String)
 
-const val PRIVACY_VERSION = "25 октября 2026 г."
+const val PRIVACY_VERSION = "25 октября 2026 г., ред. 2"
 
 private val Policy = listOf(
     PolicySection(
@@ -60,7 +60,8 @@ private val Policy = listOf(
             "• личные сообщения и фото, отправленные друзьям;\n" +
             "• переписка с Авророй в поддержке, предупреждения и бан;\n" +
             "• служебный журнал: регистрации, заявки в друзья, предупреждения и баны;\n" +
-            "• ключи входа (только их отпечатки) и неудачные попытки входа за последние 10 минут.",
+            "• ключи входа (только их отпечатки) и неудачные попытки входа за последние 10 минут;\n" +
+            "• какую редакцию этой политики ты принял и когда.",
         "Пароль твой не знаю ни я, ни Адонис. Только его отпечаток. По нему пароль не вернёшь.",
     ),
     PolicySection(
@@ -92,10 +93,11 @@ private val Policy = listOf(
     ),
     PolicySection(
         "Что видят другие люди",
-        "Любой, кто найдёт тебя по логину, видит логин, имя, статус, «о себе», аватар, украшение и пометку " +
-            "о бане. Переписку видите только вы двое (и те, у кого доступ к серверу, см. выше). " +
+        "Любой, кто найдёт тебя по логину, видит логин, имя, статус, «о себе», аватар, украшение, " +
+            "список твоих друзей и пометку о бане. Список друзей открыт всегда, скрыть его нельзя. " +
+            "Переписку видите только вы двое (и те, у кого доступ к серверу, см. выше). " +
             "Число предупреждений видишь только ты и администратор.",
-        "Бан виден всем. Это не месть, это табличка «осторожно».",
+        "Друзья на виду, бан тоже. Это не слежка и не месть — просто здесь всё честно с первого взгляда.",
     ),
     PolicySection(
         "Что остаётся только в телефоне",
@@ -132,6 +134,13 @@ private val Policy = listOf(
         "Два шанса — это щедро. Третьего не будет.",
     ),
     PolicySection(
+        "Согласие",
+        "Пользоваться Zero Spin можно только после того, как ты прочитал и принял эту политику. Без согласия " +
+            "приложение не работает, а сервер не принимает сообщения в поддержку, личку и заявки в друзья. " +
+            "Согласие и его дата сохраняются в аккаунте. Если политика изменится, приложение попросит принять её снова.",
+        "Без «да» я разговор не начну. Не из вредности — так честнее для обоих.",
+    ),
+    PolicySection(
         "Изменения и связь",
         "Если политика изменится, новая редакция появится здесь же, с новой датой. Вопросы и просьбы удалить " +
             "данные — Адонису (Adonis_AV) или в чат поддержки.",
@@ -161,23 +170,70 @@ fun PrivacyScreen(onDismiss: () -> Unit) {
                         }
                     }
                 }
-                items(Policy) { sec ->
-                    Column(Modifier.fillMaxWidth()) {
-                        Text(sec.title.uppercase(), color = Violet, fontSize = 12.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(6.dp))
-                        Text(sec.formal, color = TextMain, fontSize = 14.sp, lineHeight = 20.sp)
-                        Spacer(Modifier.height(8.dp))
-                        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).hudPanel(line = Violet, cut = 8.dp)) {
-                            Box(Modifier.width(3.dp).fillMaxHeight().background(Violet))
-                            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                                Text("АВРОРА", color = Violet, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.height(2.dp))
-                                Text(sec.aurora, color = Cyan, fontSize = 14.sp, fontStyle = FontStyle.Italic, lineHeight = 20.sp)
-                            }
-                        }
+                items(Policy) { sec -> PolicyItem(sec) }
+                item { Spacer(Modifier.height(20.dp)) }
+            }
+        }
+    }
+}
+
+
+/**
+ * Экран согласия: без принятой политики приложение дальше не пускает.
+ * «Не принимаю» не ломает ничего — просто закрывает приложение.
+ */
+@Composable
+fun PrivacyConsentScreen(updated: Boolean, onAccept: () -> Unit, onDecline: () -> Unit) {
+    var declined by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    Box(Modifier.fillMaxSize().background(Bg)) {
+        Column(Modifier.fillMaxSize().systemBarsPadding()) {
+            LazyColumn(
+                Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                item {
+                    Column {
+                        GlitchText("ZERO SPIN", color = Cyan, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = 5.sp)
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            if (updated) "Политика конфиденциальности изменилась. Прочитай и прими новую редакцию, чтобы продолжить."
+                            else "Прежде чем начать: прочитай, что здесь хранится и кто это видит. Без согласия Zero Spin не работает.",
+                            color = TextMain, fontSize = 14.sp, lineHeight = 20.sp,
+                        )
+                        Text("редакция от $PRIVACY_VERSION", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
-                item { Spacer(Modifier.height(20.dp)) }
+                items(Policy) { sec -> PolicyItem(sec) }
+            }
+            Column(Modifier.fillMaxWidth().background(com.zerospin.app.ui.theme.Panel).padding(16.dp)) {
+                if (declined) {
+                    Text("Без согласия Zero Spin не работает: ни чаты, ни Аврора. Можно прочитать ещё раз или закрыть приложение.",
+                        color = com.zerospin.app.ui.theme.Red, fontSize = 12.sp, modifier = Modifier.padding(bottom = 10.dp))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    com.zerospin.app.ui.hud.HudButton(if (declined) "Закрыть" else "Не принимаю",
+                        onClick = { if (declined) onDecline() else declined = true }, modifier = Modifier.weight(1f))
+                    com.zerospin.app.ui.hud.HudButton("Принимаю", onClick = onAccept, modifier = Modifier.weight(1f), primary = true)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PolicyItem(sec: PolicySection) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(sec.title.uppercase(), color = Violet, fontSize = 12.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(6.dp))
+        Text(sec.formal, color = TextMain, fontSize = 14.sp, lineHeight = 20.sp)
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).hudPanel(line = Violet, cut = 8.dp)) {
+            Box(Modifier.width(3.dp).fillMaxHeight().background(Violet))
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                Text("АВРОРА", color = Violet, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(2.dp))
+                Text(sec.aurora, color = Cyan, fontSize = 14.sp, fontStyle = FontStyle.Italic, lineHeight = 20.sp)
             }
         }
     }

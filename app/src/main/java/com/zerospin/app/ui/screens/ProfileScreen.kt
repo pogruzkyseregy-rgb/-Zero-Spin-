@@ -88,6 +88,7 @@ fun ProfileScreen(
     onSave: (Profile) -> Unit,
     onAvatar: (String?) -> Unit,
     onOpenBuilder: () -> Unit,
+    onOpenFriend: (String) -> Unit = {},
 ) {
     var editing by rememberSaveable { mutableStateOf(false) }
 
@@ -206,7 +207,16 @@ fun ProfileScreen(
                 }
                 if (profile.blocks.isEmpty()) {
                     Text("Профиль пуст. Добавьте блоки в конструкторе", color = Muted, fontSize = 12.sp)
+                    Spacer(Modifier.height(10.dp))
                 }
+                // Друзья видны всем и всегда: так устроен Zero Spin
+                val people = LocalPeople.current
+                FriendsSection(
+                    friends = profile.friends.map { login ->
+                        people[login.lowercase()] ?: com.zerospin.app.data.ZsPerson(login, login, "", "", "user", false, false, 0)
+                    },
+                    onOpen = onOpenFriend,
+                )
             }
         } else {
             Column(Modifier.fillMaxWidth().padding(20.dp)) {
@@ -388,7 +398,7 @@ private fun BlockView(
         // Обложка показана в шапке, здесь ничего не выводим
         BlockKind.COVER -> Unit
         BlockKind.PHOTOS -> if (profile.photos.isNotEmpty()) PhotoCarousel(profile.photos, onOpen)
-        BlockKind.FRIENDS -> if (profile.friends.isNotEmpty()) FriendsPanel(profile.friends)
+        BlockKind.FRIENDS -> Unit // друзья показываются всегда, отдельно от блоков
     }
 }
 

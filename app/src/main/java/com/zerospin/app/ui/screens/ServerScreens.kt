@@ -119,7 +119,7 @@ fun AuthScreen(serverUrl: String, onDone: (ZsSession) -> Unit, onSkip: () -> Uni
         error = null
         scope.launch {
             try {
-                val s = if (register) ZsServer.register(serverUrl, login.trim(), password) else ZsServer.login(serverUrl, login.trim(), password)
+                val s = if (register) ZsServer.register(serverUrl, login.trim(), password, PRIVACY_VERSION) else ZsServer.login(serverUrl, login.trim(), password)
                 onDone(s)
             } catch (e: ZsException) {
                 error = e.message

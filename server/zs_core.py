@@ -37,6 +37,7 @@ USER_COLUMNS = {
     "login": "text not null default ''", "login_key": "text not null default ''", "pass_hash": "text not null default ''",
     "role": "text not null default 'user'", "status": "text not null default ''", "bio": "text not null default ''",
     "avatar": "text not null default ''", "cosmetic": "text not null default ''",
+    "privacy_version": "text not null default ''", "privacy_at": "real not null default 0",
 }
 
 # Украшения аватара для всех. Лисьи ушки сюда не входят: они только у Авроры.
@@ -120,9 +121,25 @@ def create_user(db, login: str, password: str, role: str = "user", name: str = "
     return {"user_id": uid, "login": login, "role": role}
 
 
-def register(db, login: str, password: str) -> dict:
+def register(db, login: str, password: str, privacy: str = "") -> dict:
     u = create_user(db, login, password)
+    if privacy:
+        accept_privacy(db, u["user_id"], privacy)
     return u | {"token": _new_session(db, u["user_id"])}
+
+
+def accept_privacy(db, uid: str, version: str) -> None:
+    """Человек принял политику конфиденциальности (какую редакцию и когда)."""
+    version = (version or "").strip()[:40]
+    if not version:
+        raise ZsError(400, "нет редакции политики")
+    db.execute("update users set privacy_version=?, privacy_at=? where id=?", (version, time.time(), uid))
+
+
+def require_privacy(row) -> None:
+    """Без согласия с политикой не работают поддержка, личка и заявки в друзья. Аврору это не касается."""
+    if row["role"] != "aurora" and not row["privacy_version"]:
+        raise ZsError(428, "сначала прими политику конфиденциальности в приложении")
 
 
 def login(db, login_: str, password: str) -> dict:
@@ -153,7 +170,8 @@ def auth(db, token: str):
 
 def me(row) -> dict:
     return {"user_id": row["id"], "login": row["login"], "nick": row["login"], "name": row["name"], "role": row["role"],
-            "warnings": row["warnings"], "banned": bool(row["banned"]), "ban_reason": row["ban_reason"], "warn_limit": WARN_LIMIT}
+            "warnings": row["warnings"], "banned": bool(row["banned"]), "ban_reason": row["ban_reason"], "warn_limit": WARN_LIMIT,
+            "privacy_version": row["privacy_version"]}
 
 
 def profile(db, login_: str) -> dict:
@@ -216,6 +234,7 @@ def save_image(data: bytes, media: str, prefix: str) -> str:
 def support(db, row, text: str, ask) -> dict:
     """ask(history, text, warnings, user_id, login, role) -> (reply, flag, reason): вызов публичной Авроры.
     Админу (Адонису) предупреждения не ставятся: его она узнаёт и не банит."""
+    require_privacy(row)
     if row["banned"]:
         raise ZsError(403, "Аврора больше не отвечает тебе")
     text = text.strip()

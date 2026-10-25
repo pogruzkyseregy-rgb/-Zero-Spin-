@@ -70,7 +70,8 @@ class AppStore(context: Context) {
             .put("serverUrl", s.serverUrl).put("serverToken", s.serverToken).put("serverNick", s.serverNick)
             .put("zsWarnings", s.zsWarnings).put("zsBanned", s.zsBanned).put("zsBanReason", s.zsBanReason)
             .put("serverRole", s.serverRole).put("authSkipped", s.authSkipped)
-            .put("syncAfter", s.syncAfter).put("friendRequests", s.friendRequests))
+            .put("syncAfter", s.syncAfter).put("friendRequests", s.friendRequests)
+            .put("privacyAccepted", s.privacyAccepted))
         root.put("posts", JSONArray().apply {
             posts.forEach { post ->
                 put(JSONObject().put("id", post.id).put("author", post.author).put("time", post.time)
@@ -190,6 +191,7 @@ class AppStore(context: Context) {
                 authSkipped = o.optBoolean("authSkipped", d.authSkipped),
                 syncAfter = o.optInt("syncAfter", d.syncAfter),
                 friendRequests = o.optInt("friendRequests", d.friendRequests),
+                privacyAccepted = o.optString("privacyAccepted", d.privacyAccepted),
             )
         }
         root.optJSONArray("posts")?.objects()?.forEach { o ->

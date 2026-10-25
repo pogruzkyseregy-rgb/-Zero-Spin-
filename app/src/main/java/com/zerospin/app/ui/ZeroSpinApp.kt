@@ -49,6 +49,8 @@ import com.zerospin.app.ui.screens.LocalZs
 import com.zerospin.app.ui.screens.PeopleScreen
 import com.zerospin.app.ui.screens.UserProfileScreen
 import com.zerospin.app.ui.screens.ZsCtx
+import com.zerospin.app.ui.screens.PRIVACY_VERSION
+import com.zerospin.app.ui.screens.PrivacyConsentScreen
 import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -618,6 +620,10 @@ fun ZeroSpinApp() {
     // Личка и заявки: часто, пока открыт чат с другом, и реже в остальное время. Только когда приложение на экране.
     LaunchedEffect(settings.serverToken) {
         if (settings.serverToken.isBlank()) return@LaunchedEffect
+        // согласие с политикой, принятое на телефоне, сервер тоже должен знать (старые аккаунты, вход с другого телефона)
+        store.settings.value.let { s ->
+            if (s.privacyAccepted == PRIVACY_VERSION) runCatching { ZsServer.acceptPrivacy(s.serverUrl, s.serverToken, PRIVACY_VERSION) }
+        }
         refreshFriends()
         var lastIncoming = store.settings.value.friendRequests
         var round = 0
@@ -656,6 +662,22 @@ fun ZeroSpinApp() {
     }
     if (settings.pinHash.isNotEmpty() && !unlocked) {
         UnlockScreen(pinHash = settings.pinHash, animated = settings.animatedBackground, onUnlocked = { unlocked = true })
+        return
+    }
+
+    // Без согласия с политикой конфиденциальности приложение дальше не пускает
+    if (settings.privacyAccepted != PRIVACY_VERSION) {
+        PrivacyConsentScreen(
+            updated = settings.privacyAccepted.isNotBlank(),
+            onAccept = {
+                setSettings { it.copy(privacyAccepted = PRIVACY_VERSION) }
+                val s = store.settings.value
+                if (s.serverToken.isNotBlank()) {
+                    scope.launch { runCatching { ZsServer.acceptPrivacy(s.serverUrl, s.serverToken, PRIVACY_VERSION) } }
+                }
+            },
+            onDecline = { (context as? android.app.Activity)?.finish() },
+        )
         return
     }
 
@@ -848,6 +870,9 @@ fun ZeroSpinApp() {
                             pushProfile(withAvatar = true)
                         },
                         onOpenBuilder = { showBuilder = true },
+                        onOpenFriend = { login ->
+                            if (login.equals(AURORA_LOGIN, ignoreCase = true)) showAuroraProfile = true else profileLogin = login
+                        },
                     )
                 }
             }
@@ -912,6 +937,14 @@ fun ZeroSpinApp() {
                 onBack = { profileLogin = null },
                 onWrite = { openPeer(it) },
                 onChanged = { scope.launch { refreshFriends() } },
+                onOpenProfile = { other ->
+                    if (other.equals(AURORA_LOGIN, ignoreCase = true)) {
+                        profileLogin = null
+                        showAuroraProfile = true
+                    } else if (!other.equals(settings.serverNick, ignoreCase = true)) {
+                        profileLogin = other
+                    }
+                },
             )
         }
     }

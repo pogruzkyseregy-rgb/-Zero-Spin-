@@ -156,7 +156,8 @@ enum class BlockKind(val title: String, val hint: String, val hasText: Boolean) 
     LINK("ССЫЛКА", "Канал, сайт или контакт", true),
     COVER("ОБЛОЖКА", "Широкое фото вверху профиля", false),
     PHOTOS("ФОТО", "Ваши фото по кругу, листаются бесконечно", false),
-    FRIENDS("ДРУЗЬЯ", "Список друзей по нику", false),
+    /** Устарел: друзья теперь видны всегда. Остался, чтобы старые профили читались без ошибок */
+    FRIENDS("ДРУЗЬЯ", "Список друзей", false),
 }
 
 /** Блок профиля: вид и свой текст (только для видов с hasText). */
@@ -183,7 +184,6 @@ val BlockTemplates: List<Pair<String, List<ProfileBlock>>> = listOf(
         ProfileBlock(BlockKind.ABOUT),
         ProfileBlock(BlockKind.STATS),
         ProfileBlock(BlockKind.PHOTOS),
-        ProfileBlock(BlockKind.FRIENDS),
         ProfileBlock(BlockKind.BIRTHDAY),
         ProfileBlock(BlockKind.LOCATION),
         ProfileBlock(BlockKind.LINK),
@@ -239,6 +239,8 @@ data class AppSettings(
     val syncAfter: Int = 0,
     /** Входящие заявки в друзья */
     val friendRequests: Int = 0,
+    /** Какую редакцию политики конфиденциальности человек принял. Не совпадает с текущей — приложение не работает */
+    val privacyAccepted: String = "",
 )
 
 /** Логин Авроры на сервере: её профиль и новости. */

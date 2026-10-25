@@ -48,6 +48,11 @@ def _wrap(fn):
 class AuthReq(BaseModel):
     login: str
     password: str
+    privacy: str = ""   # редакция политики, которую человек принял при регистрации
+
+
+class PrivacyReq(BaseModel):
+    version: str
 
 
 class SupportReq(BaseModel):
@@ -109,10 +114,26 @@ def _post_curl(url: str, payload: dict) -> "_Resp":
 _client = httpx.Client(http2=True, timeout=90)
 
 
+_GUIDE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zs_guide.md")
+_guide_cache = {"mtime": 0.0, "text": ""}
+
+
+def guide() -> str:
+    """Справочник по Zero Spin для Авроры в поддержке. Лежит рядом с сервером и обновляется вместе с ним."""
+    try:
+        m = os.path.getmtime(_GUIDE_PATH)
+        if m != _guide_cache["mtime"]:
+            with open(_GUIDE_PATH, encoding="utf-8") as f:
+                _guide_cache.update(mtime=m, text=f.read())
+    except OSError:
+        return ""
+    return _guide_cache["text"]
+
+
 def ask_aurora(hist, text, warnings, uid, nick, role="user"):
     url = f"{RELAY_URL}/public"
     # role приходит из базы этого сервера; relay доверяет ему, потому что запрос подписан PUBLIC_TOKEN
-    payload = {"user": uid, "nick": nick, "messages": hist, "text": text, "warnings": warnings, "role": role}
+    payload = {"user": uid, "nick": nick, "messages": hist, "text": text, "warnings": warnings, "role": role, "guide": guide()}
     try:
         r = _client.post(url, headers={"Authorization": f"Bearer {PUBLIC_TOKEN}"}, json=payload)
     except httpx.HTTPError as e:
@@ -150,7 +171,7 @@ def register(req: AuthReq, request: Request):
     _reg_by_ip[ip] = [t for t in _reg_by_ip[ip] if t > now - 3600]
     if len(_reg_by_ip[ip]) >= 5:
         raise HTTPException(429, "слишком много регистраций, попробуй через час")
-    out = _wrap(lambda: core.register(DB, req.login, req.password))
+    out = _wrap(lambda: core.register(DB, req.login, req.password, req.privacy))
     _reg_by_ip[ip].append(now)
     return out
 
@@ -344,3 +365,16 @@ def me_delete(req: PasswordReq, authorization: str = Header(default="")):
     """Удаление аккаунта: нужен пароль, чтобы чужой с телефона в руках не стёр всё одним нажатием."""
     me = _me(authorization)
     return _wrap(lambda: social.delete_account(DB, me, req.password))
+
+
+@app.post("/api/me/privacy")
+def me_privacy(req: PrivacyReq, authorization: str = Header(default="")):
+    me = _me(authorization)
+    _wrap(lambda: core.accept_privacy(DB, me["id"], req.version))
+    return {"ok": True, "privacy_version": req.version.strip()[:40]}
+
+
+@app.get("/api/people/{login}/friends")
+def people_friends(login: str, authorization: str = Header(default="")):
+    _me(authorization)
+    return {"friends": _wrap(lambda: social.friends_of(DB, login))}

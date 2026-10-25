@@ -84,8 +84,8 @@ object ZsServer {
 
     suspend fun health(base: String): Boolean = runCatching { call(base, "/api/health", "GET", null, null).optBoolean("ok") }.getOrDefault(false)
 
-    suspend fun register(base: String, login: String, password: String): ZsSession {
-        val j = call(base, "/api/register", "POST", null, JSONObject().put("login", login).put("password", password))
+    suspend fun register(base: String, login: String, password: String, privacy: String = ""): ZsSession {
+        val j = call(base, "/api/register", "POST", null, JSONObject().put("login", login).put("password", password).put("privacy", privacy))
         return ZsSession(j.getString("token"), j.getString("login"), j.optString("role", "user"))
     }
 
@@ -172,6 +172,15 @@ object ZsServer {
         val b64 = android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP)
         return person(call(base, "/api/me/avatar", "POST", token, JSONObject().put("image", b64)))
     }
+
+    /** Сообщить серверу, какую редакцию политики конфиденциальности человек принял. */
+    suspend fun acceptPrivacy(base: String, token: String, version: String) {
+        call(base, "/api/me/privacy", "POST", token, JSONObject().put("version", version))
+    }
+
+    /** Друзья человека: этот список открыт всем. */
+    suspend fun friendsOf(base: String, token: String, login: String): List<ZsPerson> =
+        people(call(base, "/api/people/${enc(login)}/friends", "GET", token, null).optJSONArray("friends"))
 
     /** Удалить аккаунт насовсем. Нужен пароль. */
     suspend fun deleteAccount(base: String, token: String, password: String) {

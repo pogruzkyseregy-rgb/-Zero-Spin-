@@ -78,6 +78,7 @@ def search(db, me, q: str, limit: int = 20) -> list[dict]:
 
 
 def request(db, me, login: str) -> dict:
+    core.require_privacy(me)
     other = _user(db, login)
     if other["id"] == me["id"]:
         raise ZsError(400, "себя в друзья не добавить")
@@ -137,6 +138,12 @@ def friends(db, me) -> dict:
     return out
 
 
+def friends_of(db, login: str) -> list[dict]:
+    """Друзья человека. Этот список открыт всем: в Zero Spin его не скрыть."""
+    other = _user(db, login)
+    return friends(db, other)["friends"]
+
+
 def _msg(db, r, logins: dict) -> dict:
     def login_of(uid):
         if uid not in logins:
@@ -149,6 +156,7 @@ def _msg(db, r, logins: dict) -> dict:
 
 
 def send(db, me, login: str, text: str, image: str = "") -> dict:
+    core.require_privacy(me)
     other = _user(db, login)
     if other["role"] == "aurora":
         raise ZsError(400, "Авроре пиши в чате поддержки")

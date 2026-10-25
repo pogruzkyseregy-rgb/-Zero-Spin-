@@ -310,10 +310,20 @@ fun PeopleScreen(
 
 /** Профиль другого человека: аватар, имя, статус, описание и что можно сделать (дружба, личка). */
 @Composable
-fun UserProfileScreen(login: String, onBack: () -> Unit, onWrite: (ZsPerson) -> Unit, onChanged: () -> Unit) {
+fun UserProfileScreen(
+    login: String,
+    onBack: () -> Unit,
+    onWrite: (ZsPerson) -> Unit,
+    onChanged: () -> Unit,
+    onOpenProfile: (String) -> Unit = {},
+) {
     val zs = LocalZs.current
     val scope = rememberCoroutineScope()
-    var p by remember { mutableStateOf<ZsPerson?>(null) }
+    var p by remember(login) { mutableStateOf<ZsPerson?>(null) }
+    var theirFriends by remember(login) { mutableStateOf<List<ZsPerson>?>(null) }
+    LaunchedEffect(login, zs.token) {
+        if (zs.token.isNotBlank()) runCatching { ZsServer.friendsOf(zs.base, zs.token, login) }.onSuccess { theirFriends = it }
+    }
     var error by remember { mutableStateOf<String?>(null) }
     var confirmRemove by remember { mutableStateOf(false) }
 
@@ -373,6 +383,10 @@ fun UserProfileScreen(login: String, onBack: () -> Unit, onWrite: (ZsPerson) -> 
                     Spacer(Modifier.height(16.dp))
                     Text(cur.bio, color = TextMain, fontSize = 14.sp, modifier = Modifier.fillMaxWidth().hudPanel(cut = 10.dp).padding(14.dp))
                 }
+                if (theirFriends != null) {
+                    Spacer(Modifier.height(16.dp))
+                    FriendsSection(theirFriends ?: emptyList(), onOpen = onOpenProfile)
+                }
                 Spacer(Modifier.height(20.dp))
                 error?.let { Text(it, color = Red, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp)) }
                 if (zs.token.isNotBlank() && cur.role != "aurora") {
@@ -394,6 +408,35 @@ fun UserProfileScreen(login: String, onBack: () -> Unit, onWrite: (ZsPerson) -> 
                         "outgoing" -> HudButton("Заявка отправлена · отменить", onClick = { act("remove") }, modifier = Modifier.fillMaxWidth())
                         "none" -> HudButton("Добавить в друзья", onClick = { act("request") }, modifier = Modifier.fillMaxWidth(), primary = true)
                     }
+                }
+            }
+        }
+    }
+}
+
+
+/** Друзья человека: открытый список, его видят все. Тап — профиль друга. */
+@Composable
+fun FriendsSection(friends: List<ZsPerson>, onOpen: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().hudPanel(cut = 12.dp).padding(vertical = 12.dp)) {
+        Text("ДРУЗЬЯ · ${friends.size}", color = Muted, fontSize = 10.sp, letterSpacing = 1.5.sp, modifier = Modifier.padding(horizontal = 14.dp))
+        if (friends.isEmpty()) {
+            Text("Пока никого", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+            return@Column
+        }
+        androidx.compose.foundation.lazy.LazyRow(
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            items(friends, key = { it.login }) { p ->
+                Column(
+                    Modifier.width(64.dp).clickable { onOpen(p.login) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    PersonAvatar(p, 50)
+                    Spacer(Modifier.height(6.dp))
+                    Text(p.name.ifBlank { p.login }, color = TextMain, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("@${p.login}", color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }

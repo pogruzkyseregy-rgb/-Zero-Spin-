@@ -40,6 +40,10 @@ check("выход закрывает только свою сессию", err(la
 
 calm = lambda h, t, w, u, n, r="user": ("Ник меняется в профиле.", False, "")
 angry = lambda h, t, w, u, n, r="user": ("Граница.", True, "угрожал")
+check("без согласия с политикой поддержка не работает", err(lambda: core.support(db, row, "привет", calm)) == 428)
+core.accept_privacy(db, row["id"], "25 октября 2026 г.")
+row = core.auth(db, a["token"])
+check("согласие записано", core.me(row)["privacy_version"] == "25 октября 2026 г.")
 r = core.support(db, row, "как сменить ник", calm)
 check("обычный ответ", r["reply"] == "Ник меняется в профиле." and not r["banned"])
 r = core.support(db, core.auth(db, a["token"]), "угроза", angry)
@@ -75,6 +79,7 @@ def spy(h, t, w, u, n, r="user"):
     seen["role"] = r
     return ("Привет, Адонис.", True, "показалось")
 
+core.accept_privacy(db, adm["user_id"], "тест")
 ra = core.support(db, core.auth(db, core.login(db, "adonis_av", "test-pass-1")["token"]), "привет", spy)
 check("Аврора получает роль админа", seen.get("role") == "admin")
 check("админу не ставят предупреждение", not ra["warned"] and ra["warnings"] == 0 and not ra["banned"])
@@ -92,7 +97,7 @@ check("на старой базе создаётся админ", core.create_us
 import zs_social as social
 social.init(db)
 def U(login):
-    t = core.register(db, login, "secret-1")["token"]
+    t = core.register(db, login, "secret-1", privacy="тест")["token"]
     return core.auth(db, t)
 ann, bob, eve = U("anna_k"), U("bob_r"), U("eve_x")
 check("поиск по началу логина", [p["login"] for p in social.search(db, ann, "bo")] == ["bob_r"])
@@ -131,6 +136,10 @@ banned_u = U("bad_guy")
 db.execute("update users set banned=1 where id=?", (banned_u["id"],))
 check("забаненного Аврора в друзья не берёт", err(lambda: social.request(db, core.auth(db, core.login(db, "bad_guy", "secret-1")["token"]), "Avrora_AV")) == 403)
 check("отклонить заявку", social.remove(db, ann, "eve_x")["relation"] == "none" and social.sync(db, ann)["incoming"] == 0)
+
+nopriv = core.auth(db, core.register(db, "no_policy", "secret-1")["token"])
+check("без согласия нельзя звать в друзья и писать", err(lambda: social.request(db, nopriv, "bob_r")) == 428)
+check("список друзей открыт всем", [f["login"] for f in social.friends_of(db, "bob_r")] == [f["login"] for f in social.friends(db, bob)["friends"]])
 
 # удаление аккаунта
 gone = U("gone_soon")
