@@ -5,7 +5,9 @@
 import os, time
 from collections import defaultdict
 
+import json
 import logging
+import subprocess
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -47,13 +49,44 @@ class NickReq(BaseModel):
     nick: str
 
 
+class _Resp:
+    def __init__(self, status_code: int, text: str):
+        self.status_code = status_code
+        self.text = text
+
+    def json(self):
+        return json.loads(self.text)
+
+
+def _post_curl(url: str, payload: dict) -> "_Resp":
+    """Запасной путь: тот же запрос через curl (он проходит там, где соединения Python обрываются по дороге)."""
+    p = subprocess.run(
+        ["curl", "-sS", "-m", "90", "-X", "POST", url,
+         "-H", f"Authorization: Bearer {PUBLIC_TOKEN}", "-H", "Content-Type: application/json",
+         "--data-binary", "@-", "-w", "\n%{http_code}"],
+        input=json.dumps(payload, ensure_ascii=False).encode("utf-8"), capture_output=True, timeout=100)
+    if p.returncode != 0:
+        raise httpx.ConnectError(p.stderr.decode(errors="replace")[:300])
+    body, _, code = p.stdout.decode("utf-8", errors="replace").rpartition("\n")
+    return _Resp(int(code or 0), body)
+
+
+# HTTP/2 вместе с HTTP/1.1, как у curl: соединения «только HTTP/1.1» между серверами по дороге рвутся
+_client = httpx.Client(http2=True, timeout=90)
+
+
 def ask_aurora(hist, text, warnings, uid, nick):
+    url = f"{RELAY_URL}/public"
+    payload = {"user": uid, "nick": nick, "messages": hist, "text": text, "warnings": warnings}
     try:
-        r = httpx.post(f"{RELAY_URL}/public", headers={"Authorization": f"Bearer {PUBLIC_TOKEN}"},
-                       json={"user": uid, "nick": nick, "messages": hist, "text": text, "warnings": warnings}, timeout=90)
+        r = _client.post(url, headers={"Authorization": f"Bearer {PUBLIC_TOKEN}"}, json=payload)
     except httpx.HTTPError as e:
-        log.error("relay unreachable: %r", e)
-        raise core.ZsError(502, "Аврора сейчас недоступна (нет связи с её сервером)")
+        log.warning("relay via httpx failed (%r), trying curl", e)
+        try:
+            r = _post_curl(url, payload)
+        except (httpx.HTTPError, subprocess.SubprocessError, OSError, ValueError) as e2:
+            log.error("relay unreachable: %r", e2)
+            raise core.ZsError(502, "Аврора сейчас недоступна (нет связи с её сервером)")
     if r.status_code == 401:
         log.error("relay 401: PUBLIC_TOKEN не совпадает с relay.env")
         raise core.ZsError(502, "Аврора сейчас недоступна (ключ сервера не принят)")
