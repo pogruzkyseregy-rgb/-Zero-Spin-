@@ -444,19 +444,21 @@ private fun ChatRow(chat: Chat, last: ChatMessage?, typing: Boolean, onClick: ()
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    chat.name,
-                    color = TextMain,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 16.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                if (chat.pinned) Text("  ◆", color = Violet, fontSize = 10.sp)
-                if (chat.muted) Text("  ⊘", color = Muted, fontSize = 11.sp)
-                if (chat.ttlSeconds > 0) Text("  ⏱", color = Magenta, fontSize = 10.sp)
-                Spacer(Modifier.weight(1f))
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        chat.name,
+                        color = TextMain,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (chat.pinned) Text("  ◆", color = Violet, fontSize = 10.sp)
+                    if (chat.muted) Text("  ⊘", color = Muted, fontSize = 11.sp)
+                    if (chat.ttlSeconds > 0) Text("  ⏱", color = Magenta, fontSize = 10.sp)
+                }
+                Spacer(Modifier.width(8.dp))
                 if (last != null) Text(last.time, color = if (chat.unread > 0) Mint else Muted, fontSize = 11.sp, fontFamily = HudMono)
             }
             Spacer(Modifier.height(3.dp))

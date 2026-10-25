@@ -21,3 +21,10 @@ HTTPS даёт Caddy на адрес `https://37-220-86-132.sslip.io`.
   `zs-aurora post "текст" [картинка]`, `zs-aurora news`, `zs-aurora delete N`.
 - Админ создаётся только на сервере, пароль вводится вручную и в репозиторий не попадает:
   `ssh -t root@СЕРВЕР zs-admin create-admin Adonis_AV`. Сменить пароль: `zs-admin passwd ЛОГИН`.
+
+## Друзья и личка
+
+- `zs_social.py`: заявки в друзья, личные сообщения (текст и фото), карточки людей. Писать можно только друзьям.
+- API: `/api/people/search?q=`, `/api/people/{login}`, `/api/friends`, `/api/friends/{request|accept|remove}`,
+  `/api/dm/{login}`, `/api/sync?after=N`, `/api/dm-image/{id}`, `/api/me/profile`, `/api/me/avatar`.
+- Приложение опрашивает `/api/sync`: раз в 3 с, пока открыт чат с другом, иначе раз в 12 с.
