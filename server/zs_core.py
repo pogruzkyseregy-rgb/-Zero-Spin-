@@ -109,7 +109,8 @@ def create_user(db, login: str, password: str, role: str = "user", name: str = "
     if db.execute("select 1 from users where login_key=?", (k,)).fetchone():
         raise ZsError(409, "такой логин уже занят")
     uid = "u" + secrets.token_hex(8)
-    db.execute("insert into users(id,nick,login,login_key,name,pass_hash,role,created) values(?,?,?,?,?,?,?,?)",
+    # token_hash остался от старой схемы (там он NOT NULL без значения по умолчанию): пишем пустой
+    db.execute("insert into users(id,nick,login,login_key,name,pass_hash,role,created,token_hash) values(?,?,?,?,?,?,?,?,'')",
                (uid, k, login, k, (name or login).strip()[:60], hash_password(password), role, time.time()))
     event(db, uid, login, "register", role)
     return {"user_id": uid, "login": login, "role": role}
