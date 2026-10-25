@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -113,9 +114,9 @@ class ScreensTest {
                     verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(36.dp),
                 ) {
                     com.zerospin.app.ui.hud.AvatarCosmetics.chunked(3).forEach { row ->
-                        androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(40.dp)) {
+                        androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)) {
                             row.forEach { (id, title) ->
-                                androidx.compose.foundation.layout.Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                                androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.width(100.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
                                     androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.size(84.dp)) {
                                         com.zerospin.app.ui.hud.TargetRing(androidx.compose.ui.Modifier.size(84.dp)) {
                                             androidx.compose.material3.Text("A", color = com.zerospin.app.ui.theme.Cyan)
