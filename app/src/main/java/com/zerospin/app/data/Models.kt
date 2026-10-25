@@ -223,7 +223,14 @@ data class AppSettings(
     val zsWarnings: Int = 0,
     val zsBanned: Boolean = false,
     val zsBanReason: String = "",
+    /** Роль на сервере: user, admin или aurora */
+    val serverRole: String = "",
+    /** Человек выбрал «Позже» на экране входа: больше его не показываем, пока сам не откроет */
+    val authSkipped: Boolean = false,
 )
+
+/** Логин Авроры на сервере: её профиль и новости. */
+const val AURORA_LOGIN = "Avrora_AV"
 
 /** Сервер на машине Авроры: HTTPS через Caddy, адрес по IP. */
 const val DEFAULT_SERVER = "https://37-220-86-132.sslip.io"

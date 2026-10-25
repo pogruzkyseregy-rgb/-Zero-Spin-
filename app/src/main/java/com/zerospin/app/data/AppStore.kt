@@ -67,7 +67,8 @@ class AppStore(context: Context) {
             .put("openToAll", s.openToAll).put("glitch", s.glitch)
             .put("animatedBackground", s.animatedBackground).put("pinHash", s.pinHash)
             .put("serverUrl", s.serverUrl).put("serverToken", s.serverToken).put("serverNick", s.serverNick)
-            .put("zsWarnings", s.zsWarnings).put("zsBanned", s.zsBanned).put("zsBanReason", s.zsBanReason))
+            .put("zsWarnings", s.zsWarnings).put("zsBanned", s.zsBanned).put("zsBanReason", s.zsBanReason)
+            .put("serverRole", s.serverRole).put("authSkipped", s.authSkipped))
         root.put("posts", JSONArray().apply {
             posts.forEach { post ->
                 put(JSONObject().put("id", post.id).put("author", post.author).put("time", post.time)
@@ -181,6 +182,8 @@ class AppStore(context: Context) {
                 zsWarnings = o.optInt("zsWarnings", d.zsWarnings),
                 zsBanned = o.optBoolean("zsBanned", d.zsBanned),
                 zsBanReason = o.optString("zsBanReason", d.zsBanReason),
+                serverRole = o.optString("serverRole", d.serverRole),
+                authSkipped = o.optBoolean("authSkipped", d.authSkipped),
             )
         }
         root.optJSONArray("posts")?.objects()?.forEach { o ->

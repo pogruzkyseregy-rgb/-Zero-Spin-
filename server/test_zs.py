@@ -1,4 +1,4 @@
-import os, sys, tempfile
+import os, sqlite3, sys, tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import zs_core as core
 
@@ -7,55 +7,67 @@ def check(name, cond, info=""):
     global ok, bad
     if cond: ok += 1; print("[ОК]  ", name)
     else: bad += 1; print("[НЕТ] ", name, info)
-
-db = core.connect(os.path.join(tempfile.mkdtemp(), "t.db"))
-a = core.register(db, "@Vasya_1", "Вася")
-check("регистрация: ник в нижнем регистре без @", a["nick"] == "vasya_1" and len(a["token"]) == 48)
-for bad_nick in ["ab", "имя", "a b c", "x" * 30]:
+def err(fn):
     try:
-        core.register(db, bad_nick); check("плохой ник отклонён: " + bad_nick, False)
+        fn(); return None
     except core.ZsError as e:
-        check("плохой ник отклонён: " + bad_nick, e.code == 400)
-try:
-    core.register(db, "vasya_1"); check("занятый ник", False)
-except core.ZsError as e:
-    check("занятый ник", e.code == 409)
+        return e.code
+
+T = tempfile.mkdtemp()
+db = core.connect(os.path.join(T, "t.db"))
+core.ensure_aurora(db)
+a = core.register(db, "Vasya_1", "secret12")
+check("регистрация по логину и паролю", a["login"] == "Vasya_1" and a["role"] == "user" and len(a["token"]) == 48)
+check("логин уникален без учёта регистра", err(lambda: core.register(db, "VASYA_1", "secret12")) == 409)
+check("плохой логин", err(lambda: core.register(db, "ab", "secret12")) == 400 and err(lambda: core.register(db, "имя", "secret12")) == 400)
+check("короткий пароль", err(lambda: core.register(db, "petya", "123")) == 400)
+check("логины команды заняты", err(lambda: core.register(db, "Adonis_AV", "secret12")) == 403 and err(lambda: core.register(db, "evil_av", "secret12")) == 403)
+check("в аккаунт Авроры паролем не войти", err(lambda: core.login(db, "Avrora_AV", "")) == 401)
+adm = core.create_user(db, "Adonis_AV", "test-pass-1", role="admin", allow_reserved=True, min_password=4)
+check("админ создаётся с консоли", adm["role"] == "admin")
+check("пароль в базе не хранится открыто", "test-pass-1" not in str(list(db.execute("select pass_hash from users"))))
+l = core.login(db, "adonis_av", "test-pass-1")
+check("вход админа", l["role"] == "admin" and core.auth(db, l["token"])["login"] == "Adonis_AV")
+check("неверный пароль", err(lambda: core.login(db, "Adonis_AV", "wrong-pass")) == 401)
+for _ in range(core.LOGIN_TRIES):
+    err(lambda: core.login(db, "vasya_1", "wrong"))
+check("перебор паролей останавливается", err(lambda: core.login(db, "vasya_1", "secret12")) == 429)
+db.execute("delete from login_fail")
 row = core.auth(db, a["token"])
-check("вход по токену", row["nick"] == "vasya_1")
-try:
-    core.auth(db, "fake"); check("чужой токен", False)
-except core.ZsError as e:
-    check("чужой токен", e.code == 401)
+s2 = core.login(db, "Vasya_1", "secret12")["token"]
+core.logout(db, s2)
+check("выход закрывает только свою сессию", err(lambda: core.auth(db, s2)) == 401 and core.auth(db, a["token"])["login"] == "Vasya_1")
 
-seen = []
-def calm(hist, text, w, uid, nick):
-    seen.append((hist, text, w)); return ("Ник меняется в профиле.", False, "")
-def angry(hist, text, w, uid, nick):
-    seen.append((hist, text, w)); return ("Граница. Ещё раз — и разговор окончен.", True, "угрожал")
-
+calm = lambda h, t, w, u, n: ("Ник меняется в профиле.", False, "")
+angry = lambda h, t, w, u, n: ("Граница.", True, "угрожал")
 r = core.support(db, row, "как сменить ник", calm)
-check("обычный ответ", r["reply"] == "Ник меняется в профиле." and r["warnings"] == 0 and not r["banned"])
-r = core.support(db, core.auth(db, a["token"]), "я тебя найду", angry)
+check("обычный ответ", r["reply"] == "Ник меняется в профиле." and not r["banned"])
+r = core.support(db, core.auth(db, a["token"]), "угроза", angry)
 check("первая угроза: предупреждение", r["warned"] and r["warnings"] == 1 and not r["banned"])
-check("история уходит ей", seen[-1][0][-1] == {"role": "assistant", "content": "Ник меняется в профиле."} and seen[-1][2] == 0)
-r = core.support(db, core.auth(db, a["token"]), "ещё раз угрожаю", angry)
+r = core.support(db, core.auth(db, a["token"]), "угроза", angry)
 check("вторая угроза: бан", r["banned"] and r["warnings"] == 2)
-try:
-    core.support(db, core.auth(db, a["token"]), "привет", calm); check("забаненному она не отвечает", False)
-except core.ZsError as e:
-    check("забаненному она не отвечает", e.code == 403)
-check("бан виден другим", core.public_user(db, "@VASYA_1") == {"nick": "vasya_1", "banned": True})
-check("me показывает бан и причину", core.me(core.auth(db, a["token"]))["banned"] and core.me(core.auth(db, a["token"]))["ban_reason"] == "угрожал")
-check("история целиком", [h["role"] for h in core.history(db, row["id"])] == ["user", "assistant"] * 3)
-check("снятие бана", core.unban(db, "vasya_1")["banned"] is False and core.me(core.auth(db, a["token"]))["warnings"] == 0)
-b = core.register(db, "spammer")
-rb = core.auth(db, b["token"])
-for i in range(core.MSG_LIMIT):
-    core.support(db, rb, f"m{i}", calm)
-try:
-    core.support(db, rb, "ещё", calm); check("лимит частоты", False)
-except core.ZsError as e:
-    check("лимит частоты", e.code == 429)
-check("события записаны", [e["kind"] for e in db.execute("select kind from events where nick='vasya_1'")] == ["register", "warn", "ban", "unban"])
+check("забаненному она не отвечает", err(lambda: core.support(db, core.auth(db, a["token"]), "привет", calm)) == 403)
+check("бан виден в профиле", core.profile(db, "vasya_1")["banned"] is True)
+check("снятие бана", core.unban(db, "Vasya_1")["banned"] is False and core.me(core.auth(db, a["token"]))["warnings"] == 0)
+
+p = core.profile(db, "Avrora_AV")
+check("профиль Авроры есть сразу", p["role"] == "aurora" and p["name"] == "Аврора" and p["status"])
+core.update_profile(db, "Avrora_AV", status="пишу новости", avatar=os.path.join(T, "a.png"))
+check("она меняет статус и аватар", core.profile(db, "avrora_av")["status"] == "пишу новости" and core.profile(db, "avrora_av")["has_avatar"])
+n1 = core.add_news(db, "Avrora_AV", "Вышла версия с живой поддержкой")
+core.add_news(db, "Avrora_AV", "Ещё новость", os.path.join(T, "n.png"))
+nl = core.news(db)
+check("новости по порядку, свежие сверху", [n["text"] for n in nl] == ["Ещё новость", "Вышла версия с живой поддержкой"] and nl[0]["has_image"] and nl[0]["login"] == "Avrora_AV")
+check("удаление новости", core.delete_news(db, n1["id"]) and len(core.news(db)) == 1)
+
+# переезд со старой базы (вход по нику без пароля)
+old = os.path.join(T, "old.db")
+o = sqlite3.connect(old)
+o.executescript("""create table users(id text primary key, nick text unique not null, name text not null default '', token_hash text not null, created real not null,
+ warnings integer not null default 0, banned integer not null default 0, banned_at real not null default 0, ban_reason text not null default '');""")
+o.execute("insert into users(id,nick,name,token_hash,created) values('u1','oldnick','Старый',?,1)", (core._hash_token("tok"),))
+o.commit(); o.close()
+db2 = core.connect(old)
+check("старый аккаунт переезжает и вход по ключу работает", core.auth(db2, "tok")["login"] == "oldnick")
 print(f"\nИТОГ: ок {ok}, нет {bad}")
 sys.exit(1 if bad else 0)

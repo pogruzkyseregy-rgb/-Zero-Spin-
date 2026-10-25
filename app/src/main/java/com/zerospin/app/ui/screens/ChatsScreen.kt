@@ -147,6 +147,7 @@ fun ChatsScreen(
     onToggleArchive: (chatId: Int) -> Unit,
     onSetTtl: (chatId: Int, seconds: Int) -> Unit,
     onDeleteChat: (chatId: Int) -> Unit,
+    onOpenAuroraProfile: () -> Unit = {},
 ) {
     val open = chats.firstOrNull { it.id == openChatId }
     if (open == null) {
@@ -170,6 +171,7 @@ fun ChatsScreen(
             settings = settings,
             typing = typingChatId == open.id,
             onBack = { onOpenChat(-1) },
+            onOpenAuroraProfile = onOpenAuroraProfile,
             onSend = { text, attachments, replyTo -> onSend(open.id, text, attachments, replyTo) },
             onEdit = { id, text -> onEdit(open.id, id, text) },
             onDelete = { id -> onDelete(open.id, id) },
@@ -371,6 +373,7 @@ private fun SearchField(query: String, hint: String, onChange: (String) -> Unit)
 /** Значок канала: у Авроры — кольцо с лисьими ушками, у Избранного — звезда. */
 @Composable
 private fun ChatBadge(chat: Chat, size: Int) {
+    Box(Modifier.size(size.dp)) {
     TargetRing(
         Modifier.size(size.dp),
         color = if (chat.id == SUPPORT_CHAT_ID) Violet else Cyan,
@@ -382,6 +385,8 @@ private fun ChatBadge(chat: Chat, size: Int) {
             fontWeight = FontWeight.Bold,
             fontSize = (size / 3).sp,
         )
+    }
+    if (chat.id == SUPPORT_CHAT_ID) AvBadge((size * 0.5f).toInt())
     }
 }
 
@@ -478,6 +483,7 @@ private fun Conversation(
     settings: AppSettings,
     typing: Boolean,
     onBack: () -> Unit,
+    onOpenAuroraProfile: () -> Unit,
     onSend: (String, List<Attachment>, Int?) -> Unit,
     onEdit: (Int, String) -> Unit,
     onDelete: (Int) -> Unit,
@@ -611,9 +617,11 @@ private fun Conversation(
                 HudIcon(HudIconKind.BACK, Cyan, Modifier.size(18.dp))
             }
             Spacer(Modifier.width(12.dp))
-            ChatBadge(chat, 36)
+            // В поддержке шапка ведёт в профиль Авроры: аватар, статус, новости
+            val toProfile = if (chat.id == SUPPORT_CHAT_ID) Modifier.clickable(onClick = onOpenAuroraProfile) else Modifier
+            Box(toProfile) { ChatBadge(chat, 36) }
             Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f).then(toProfile)) {
                 Text(
                     chat.name.uppercase(),
                     color = Cyan,
@@ -634,7 +642,7 @@ private fun Conversation(
                         when {
                             chat.id == SUPPORT_CHAT_ID && settings.zsBanned -> "бан · Аврора не отвечает"
                             chat.id == SUPPORT_CHAT_ID && settings.zsWarnings > 0 -> "квантовый ИИ · Аврора · предупреждение ${settings.zsWarnings} из 2"
-                            chat.id == SUPPORT_CHAT_ID -> "квантовый ИИ · Аврора"
+                            chat.id == SUPPORT_CHAT_ID -> "квантовый ИИ · Аврора · профиль ›"
                             chat.id == SAVED_CHAT_ID -> "сохранённое для себя"
                             settings.showOnline -> "в сети"
                             else -> ""

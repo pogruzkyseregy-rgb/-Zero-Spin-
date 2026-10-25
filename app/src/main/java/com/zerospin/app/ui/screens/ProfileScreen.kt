@@ -82,6 +82,7 @@ private val StatusPresets = listOf("на связи", "на смене", "в д�
 fun ProfileScreen(
     profile: Profile,
     banned: Boolean = false,
+    admin: Boolean = false,
     postCount: Int,
     chatCount: Int,
     onSave: (Profile) -> Unit,
@@ -164,6 +165,7 @@ fun ProfileScreen(
             ProfileHeader(
                 profile = profile,
                 banned = banned,
+                admin = admin,
                 onAvatarTap = {
                     val uri = profile.avatarUri
                     if (uri != null) viewing = imageAttachment(uri, "аватар") else pickAvatar()
@@ -322,6 +324,7 @@ fun ProfileScreen(
 private fun ProfileHeader(
     profile: Profile,
     banned: Boolean,
+    admin: Boolean,
     onAvatarTap: () -> Unit,
     onCoverTap: (String) -> Unit,
 ) {
@@ -346,12 +349,13 @@ private fun ProfileHeader(
                 onPick = onAvatarTap,
                 modifier = Modifier.align(Alignment.BottomCenter).offset(y = 52.dp),
                 banned = banned,
+                admin = admin,
             )
         }
         Spacer(Modifier.height(60.dp))
     } else {
         Spacer(Modifier.height(16.dp))
-        Avatar(profile = profile, onPick = onAvatarTap, banned = banned)
+        Avatar(profile = profile, onPick = onAvatarTap, banned = banned, admin = admin)
         Spacer(Modifier.height(12.dp))
     }
 }
@@ -523,9 +527,11 @@ private fun InfoRow(label: String, value: String) {
 
 /** Круг с фото или инициалом. Нажатие передаётся наружу: открыть фото или выбрать новое. */
 @Composable
-private fun Avatar(profile: Profile, onPick: () -> Unit, modifier: Modifier = Modifier, banned: Boolean = false) {
+private fun Avatar(profile: Profile, onPick: () -> Unit, modifier: Modifier = Modifier, banned: Boolean = false, admin: Boolean = false) {
     val photo = profile.avatarUri?.let { rememberThumb(it, 512) }
-    TargetRing(modifier.size(104.dp).then(if (banned) Modifier.bannedGlitch() else Modifier).clickable(onClick = onPick)) {
+    // Значок AV в углу аватара: аккаунт команды (админ)
+    Box(modifier.size(104.dp)) {
+    TargetRing(Modifier.size(104.dp).then(if (banned) Modifier.bannedGlitch() else Modifier).clickable(onClick = onPick)) {
         if (photo != null) {
             Image(
                 bitmap = photo,
@@ -541,6 +547,8 @@ private fun Avatar(profile: Profile, onPick: () -> Unit, modifier: Modifier = Mo
                 fontWeight = FontWeight.Bold,
             )
         }
+    }
+    if (admin) AvBadge(30)
     }
 }
 

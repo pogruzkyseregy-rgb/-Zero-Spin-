@@ -1,16 +1,17 @@
 """
 Веб-часть сервера Zero Spin. Запуск: uvicorn zs_server:app --host 127.0.0.1 --port 8077
-Настройки в zs.env (systemd EnvironmentFile): RELAY_URL, PUBLIC_TOKEN, ADMIN_TOKEN, ZS_DB.
+Настройки в /etc/zs-server.env: RELAY_URL, PUBLIC_TOKEN, ADMIN_TOKEN, ZS_DB.
 """
-import os, time
-from collections import defaultdict
-
 import json
 import logging
+import os
 import subprocess
+import time
+from collections import defaultdict
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 import zs_core as core
@@ -19,6 +20,7 @@ RELAY_URL = os.environ.get("RELAY_URL", "https://avrora-exe.ru/app-api").rstrip(
 PUBLIC_TOKEN = os.environ.get("PUBLIC_TOKEN", "")
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 DB = core.connect(os.environ.get("ZS_DB", "zs.db"))
+core.ensure_aurora(DB)
 
 app = FastAPI(title="Zero Spin")
 log = logging.getLogger("uvicorn.error")
@@ -36,9 +38,9 @@ def _wrap(fn):
         raise HTTPException(e.code, e.msg)
 
 
-class RegisterReq(BaseModel):
-    nick: str
-    name: str = ""
+class AuthReq(BaseModel):
+    login: str
+    password: str
 
 
 class SupportReq(BaseModel):
@@ -46,7 +48,8 @@ class SupportReq(BaseModel):
 
 
 class NickReq(BaseModel):
-    nick: str
+    nick: str = ""
+    login: str = ""
 
 
 class _Resp:
@@ -105,19 +108,30 @@ def ask_aurora(hist, text, warnings, uid, nick):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "service": "zero-spin", "relay": bool(PUBLIC_TOKEN)}
+    return {"ok": True, "service": "zero-spin", "relay": bool(PUBLIC_TOKEN), "auth": "login"}
 
 
 @app.post("/api/register")
-def register(req: RegisterReq, request: Request):
+def register(req: AuthReq, request: Request):
     ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "?").split(",")[0].strip()
     now = time.time()
     _reg_by_ip[ip] = [t for t in _reg_by_ip[ip] if t > now - 3600]
     if len(_reg_by_ip[ip]) >= 5:
         raise HTTPException(429, "слишком много регистраций, попробуй через час")
-    out = _wrap(lambda: core.register(DB, req.nick, req.name))
+    out = _wrap(lambda: core.register(DB, req.login, req.password))
     _reg_by_ip[ip].append(now)
     return out
+
+
+@app.post("/api/login")
+def login(req: AuthReq):
+    return _wrap(lambda: core.login(DB, req.login, req.password))
+
+
+@app.post("/api/logout")
+def logout(authorization: str = Header(default="")):
+    core.logout(DB, _bearer(authorization))
+    return {"ok": True}
 
 
 @app.get("/api/me")
@@ -125,9 +139,30 @@ def me(authorization: str = Header(default="")):
     return _wrap(lambda: core.me(core.auth(DB, _bearer(authorization))))
 
 
-@app.get("/api/users/{nick}")
-def user(nick: str):
-    return _wrap(lambda: core.public_user(DB, nick))
+@app.get("/api/users/{login}")
+def user(login: str):
+    return _wrap(lambda: core.profile(DB, login))
+
+
+@app.get("/api/users/{login}/avatar")
+def user_avatar(login: str):
+    path = _wrap(lambda: core.avatar_path(DB, login))
+    if not os.path.exists(path):
+        raise HTTPException(404, "нет аватара")
+    return FileResponse(path, headers={"Cache-Control": "public, max-age=300"})
+
+
+@app.get("/api/news")
+def news_list():
+    return {"news": core.news(DB)}
+
+
+@app.get("/api/news/{news_id}/image")
+def news_image(news_id: int):
+    path = _wrap(lambda: core.news_image(DB, news_id))
+    if not os.path.exists(path):
+        raise HTTPException(404, "нет картинки")
+    return FileResponse(path, headers={"Cache-Control": "public, max-age=3600"})
 
 
 @app.get("/api/support")
@@ -143,8 +178,16 @@ def support(req: SupportReq, authorization: str = Header(default="")):
 
 
 def _admin(h: str):
-    if not ADMIN_TOKEN or _bearer(h) != ADMIN_TOKEN:
-        raise HTTPException(401, "нет прав")
+    """Админ: ключ ADMIN_TOKEN или вход под аккаунтом с ролью admin."""
+    t = _bearer(h)
+    if ADMIN_TOKEN and t == ADMIN_TOKEN:
+        return
+    try:
+        if core.auth(DB, t)["role"] == "admin":
+            return
+    except core.ZsError:
+        pass
+    raise HTTPException(401, "нет прав")
 
 
 @app.get("/api/admin/users")
@@ -156,4 +199,4 @@ def admin_users(authorization: str = Header(default="")):
 @app.post("/api/admin/unban")
 def admin_unban(req: NickReq, authorization: str = Header(default="")):
     _admin(authorization)
-    return _wrap(lambda: core.unban(DB, req.nick))
+    return _wrap(lambda: core.unban(DB, req.login or req.nick))

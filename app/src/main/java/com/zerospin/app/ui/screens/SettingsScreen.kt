@@ -56,6 +56,8 @@ fun SettingsScreen(
     onOpenProfile: () -> Unit,
     onOpenBuilder: () -> Unit,
     onDismiss: () -> Unit,
+    onLogin: () -> Unit = {},
+    onLogout: () -> Unit = {},
 ) {
     var settingPin by remember { mutableStateOf(false) }
     var pinMenu by remember { mutableStateOf(false) }
@@ -194,19 +196,24 @@ fun SettingsScreen(
                     if (url != settings.serverUrl && url.startsWith("https://")) {
                         androidx.compose.material3.TextButton(onClick = {
                             // другой сервер: вход нужен заново, бан и предупреждения берутся оттуда
-                            onChange(settings.copy(serverUrl = url, serverToken = "", serverNick = "", zsWarnings = 0, zsBanned = false, zsBanReason = ""))
+                            onChange(settings.copy(serverUrl = url, serverToken = "", serverNick = "", serverRole = "", zsWarnings = 0, zsBanned = false, zsBanReason = ""))
                         }) { Text("Сохранить адрес", color = Cyan) }
                     }
                     Text(
                         when {
-                            settings.serverToken.isBlank() -> "Ещё не вошли: вход случится сам при первом сообщении Авроре"
+                            settings.serverToken.isBlank() -> "Не вошли. Аврора в поддержке отвечает только тем, у кого есть аккаунт"
                             settings.zsBanned -> "@${settings.serverNick} · БАН: ${settings.zsBanReason.ifBlank { "без причины" }}"
-                            else -> "@${settings.serverNick} · предупреждений ${settings.zsWarnings} из 2"
+                            else -> "@${settings.serverNick}" + (if (settings.serverRole == "admin") " · АДМИН" else "") + " · предупреждений ${settings.zsWarnings} из 2"
                         },
                         color = if (settings.zsBanned) com.zerospin.app.ui.theme.Red else Muted,
                         fontSize = 11.sp,
                         modifier = Modifier.padding(vertical = 8.dp),
                     )
+                    if (settings.serverToken.isBlank()) {
+                        androidx.compose.material3.TextButton(onClick = onLogin) { Text("Войти или зарегистрироваться", color = Cyan) }
+                    } else {
+                        androidx.compose.material3.TextButton(onClick = onLogout) { Text("Выйти из аккаунта", color = com.zerospin.app.ui.theme.Red) }
+                    }
                 }
 
                 HudSection("О приложении") {

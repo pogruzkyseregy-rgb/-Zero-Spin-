@@ -39,6 +39,9 @@ import com.zerospin.app.data.auroraReply
 import com.zerospin.app.data.AppSettings
 import com.zerospin.app.data.ZsException
 import com.zerospin.app.data.ZsServer
+import com.zerospin.app.data.ZsSession
+import com.zerospin.app.ui.screens.AuthScreen
+import com.zerospin.app.ui.screens.AuroraProfileScreen
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableLongStateOf
@@ -221,23 +224,37 @@ fun ZeroSpinApp() {
         store.settings.value = change(store.settings.value)
     }
 
-    /** Вход на сервер под ником из профиля. Первый раз телефон регистрируется сам. */
-    suspend fun ensureAccount(): String? {
+    var showAuth by rememberSaveable { mutableStateOf(false) }
+    var showAuroraProfile by rememberSaveable { mutableStateOf(false) }
+
+    /** Токен аккаунта. Без входа Аврора в поддержке не отвечает: просим войти по логину и паролю. */
+    fun ensureAccount(): String? {
         val s = store.settings.value
         if (s.serverToken.isNotBlank()) return s.serverToken
-        val p = store.profile.value
-        return try {
-            val (token, nick) = ZsServer.register(s.serverUrl, p.nick, p.name)
-            setSettings { it.copy(serverToken = token, serverNick = nick) }
-            token
-        } catch (e: ZsException) {
-            deliverIncoming(
-                SUPPORT_CHAT_ID,
-                if (e.code == 409) "Ник @${p.nick} на сервере уже занят. Смени ник в профиле и напиши снова."
-                else "Не получилось войти на сервер: ${e.message}",
-            )
-            null
+        deliverIncoming(SUPPORT_CHAT_ID, "Чтобы я ответила, войди в аккаунт: логин и пароль. Окно входа уже открыто, или найдёшь его в Настройках → Сервер.")
+        showAuth = true
+        return null
+    }
+
+    fun applySession(z: ZsSession) {
+        setSettings {
+            it.copy(serverToken = z.token, serverNick = z.login, serverRole = z.role, authSkipped = false,
+                zsWarnings = 0, zsBanned = false, zsBanReason = "")
         }
+        showAuth = false
+        // бан и предупреждения этого аккаунта сразу берём с сервера
+        scope.launch {
+            val s = store.settings.value
+            runCatching { ZsServer.me(s.serverUrl, s.serverToken) }.onSuccess { m ->
+                setSettings { it.copy(zsWarnings = m.warnings, zsBanned = m.banned, zsBanReason = m.banReason, serverNick = m.nick, serverRole = m.role) }
+            }
+        }
+    }
+
+    fun logout() {
+        val s = store.settings.value
+        if (s.serverToken.isNotBlank()) scope.launch { runCatching { ZsServer.logout(s.serverUrl, s.serverToken) } }
+        setSettings { it.copy(serverToken = "", serverNick = "", serverRole = "", zsWarnings = 0, zsBanned = false, zsBanReason = "") }
     }
 
     /** Живая Аврора: ответ, предупреждения и бан решает сервер, приложение только показывает. */
@@ -260,8 +277,9 @@ fun ZeroSpinApp() {
                         deliverIncoming(SUPPORT_CHAT_ID, "⛔ Аврора больше не отвечает тебе.")
                     }
                     401 -> {
-                        setSettings { it.copy(serverToken = "") }
-                        deliverIncoming(SUPPORT_CHAT_ID, "Сервер не узнал этот телефон. Напиши ещё раз, войду заново.")
+                        setSettings { it.copy(serverToken = "", serverRole = "") }
+                        deliverIncoming(SUPPORT_CHAT_ID, "Сессия закончилась. Войди в аккаунт снова.")
+                        showAuth = true
                     }
                     0 -> deliverIncoming(SUPPORT_CHAT_ID, "Нет связи с сервером. Пока подсказка из самого приложения:\n" + auroraReply(text))
                     else -> deliverIncoming(SUPPORT_CHAT_ID, e.message ?: "Ошибка сервера")
@@ -285,9 +303,13 @@ fun ZeroSpinApp() {
     LaunchedEffect(Unit) {
         val s = store.settings.value
         if (s.serverToken.isNotBlank()) {
-            runCatching { ZsServer.me(s.serverUrl, s.serverToken) }.onSuccess { m ->
-                setSettings { it.copy(zsWarnings = m.warnings, zsBanned = m.banned, zsBanReason = m.banReason, serverNick = m.nick) }
-            }
+            runCatching { ZsServer.me(s.serverUrl, s.serverToken) }
+                .onSuccess { m ->
+                    setSettings { it.copy(zsWarnings = m.warnings, zsBanned = m.banned, zsBanReason = m.banReason, serverNick = m.nick, serverRole = m.role) }
+                }
+                .onFailure { e -> if (e is ZsException && e.code == 401) setSettings { it.copy(serverToken = "", serverRole = "") } }
+        } else if (!s.authSkipped) {
+            showAuth = true
         }
     }
 
@@ -505,6 +527,7 @@ fun ZeroSpinApp() {
                         onToggleArchive = { id -> updateChat(id) { it.copy(archived = !it.archived) } },
                         onSetTtl = { id, seconds -> updateChat(id) { it.copy(ttlSeconds = seconds) } },
                         onDeleteChat = { id -> deleteChat(id) },
+                        onOpenAuroraProfile = { showAuroraProfile = true },
                     )
 
                     2 -> when (section) {
@@ -541,6 +564,7 @@ fun ZeroSpinApp() {
                     3 -> ProfileScreen(
                         profile = store.profile.value,
                         banned = settings.zsBanned,
+                        admin = settings.serverRole == "admin" && settings.serverToken.isNotBlank(),
                         postCount = store.posts.count { it.author == myName },
                         chatCount = store.chats.count { it.id != SUPPORT_CHAT_ID && it.id != SAVED_CHAT_ID },
                         onSave = { store.profile.value = it },
@@ -577,6 +601,23 @@ fun ZeroSpinApp() {
                 showBuilder = true
             },
             onDismiss = { showSettings = false },
+            onLogin = { showAuth = true },
+            onLogout = { logout() },
+        )
+    }
+
+    if (showAuroraProfile) {
+        AuroraProfileScreen(serverUrl = settings.serverUrl, onBack = { showAuroraProfile = false })
+    }
+
+    if (showAuth) {
+        AuthScreen(
+            serverUrl = settings.serverUrl,
+            onDone = { applySession(it) },
+            onSkip = {
+                showAuth = false
+                setSettings { it.copy(authSkipped = true) }
+            },
         )
     }
 }
